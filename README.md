@@ -48,9 +48,7 @@ Build and run Zephyr's display sample on Debian 12 using the zphqst-03
 [Makefile](Makefile):
 
 ```
-(.venv) $ make clean
-(.venv) $ make display
-(.venv) $ make flash
+(.venv) $ make clean && make display && make flash
 ```
 
 The code should begin running after `make flash` finishes. If it works, the
@@ -62,9 +60,7 @@ white.
 ### Zephyr Shell (plain version)
 
 ```
-(.venv) $ make clean
-(.venv) $ make shell
-(.venv) $ make flash
+(.venv) $ make clean && make shell && make flash
 (.venv) $ make monitor
 ```
 
@@ -75,9 +71,7 @@ exit the serial monitor is **Ctrl+]**.
 ### Zephyr Button Sample
 
 ```
-(.venv) $ make clean
-(.venv) $ make button
-(.venv) $ make flash
+(.venv) $ make clean && make button && make flash
 (.venv) $ make monitor
 ```
 
@@ -85,12 +79,20 @@ When you press the Boot button, this will turn on the red `#13` LED and print
 a message to the serial console.
 
 
+### Zephyr LVGL Demo
+
+```
+(.venv) $ make clean && make lvgl && make flash
+```
+
+This demo is at the wrong screen size, and the button doesn't work. But, it
+does show a nice button widget and good font rendering.
+
+
 ### Zephyr Wifi Shell
 
 ```
-(.venv) $ make clean
-(.venv) $ make wifishell
-(.venv) $ make flash
+(.venv) $ make clean && make wifishell && make flash
 (.venv) $ make monitor
 ```
 
