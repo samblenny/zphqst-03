@@ -14,7 +14,7 @@
  * - https://docs.circuitpython.org/en/latest/shared-bindings/busdisplay/
  * - https://learn.adafruit.com/adafruit-1-14-240x135-color-tft-breakout/circuitpython-displayio-quickstart
  *
- * The Feather TFT ESP32-S3 board uses the same display modeule as the Adafruit
+ * The Feather TFT ESP32-S3 board uses the same display module as the Adafruit
  * 1.14" 240x135 Color TFT breakout board (Adafruit P/N: 4383). In the Learn
  * guide for that breakout board, the ST7789 DisplayIO driver gets initialized
  * with `width=240, height=135, rowstart=40, colstart=53`.
@@ -47,17 +47,49 @@
 		st7789v_tft_display: st7789v@0 {
 			compatible = "sitronix,st7789v";
 			reg = <0>;
-			mipi-max-frequency = <1000000>; /* 1 MHz */
+			mipi-max-frequency = <10000000>;  /* 10 MHz */
 			mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
-			/* Offsets adapted from CircuitPython 1.14" TFT Learn guide */
-			x-offset = <52>;  /* don't use 53 (results in row of static) */
-			y-offset = <40>;
-			height = <240>;   /* Y range is 0..319 */
-			width  = <135>;   /* X range is 0..239 */
+			colmod = <0x55>;  /* 16-bit 5-6-5 color */
 
-			/* These values copied from CircuitPython init sequence */
-			colmod   = <0x55>;  /* 16-bit 5-6-5 */
-			mdac     = <0x0C>;
+			/* The combination of mdac, x-offset, y-offset, height, and width
+			 * control screen rotation, RGB/BGR order, and refresh direction.
+			 * The mdac property corresponds to the MIPI MADCTL command (36h).
+			 *
+			 * 0° rotation (top left by Feather TFT Boot button):
+			 *   mdac     = <0x0C>;
+			 *   x-offset = <52>;
+			 *   y-offset = <40>;
+			 *   height   = <240>;
+			 *   width    = <135>;
+			 *
+			 * 90° CW rotation (top left by Feather TFT battery jack):
+			 *   mdac     = <0x6C>;
+			 *   x-offset = <40>;
+			 *   y-offset = <53>;
+			 *   height   = <135>;
+			 *   width    = <240>;
+			 *
+			 * 180° CW rotation (top left by Feathe TFT SDA pin):
+			 *   mdac     = <0xCC>;
+			 *   x-offset = <53>;
+			 *   y-offset = <40>;
+			 *   height   = <240>;
+			 *   width    = <135>;
+			 *
+			 * 270° CW rotation (top left by Feather TFT Adafruit logo):
+			 *   mdac     = <0xAC>;
+			 *   x-offset = <40>;
+			 *   y-offset = <52>;
+			 *   height   = <135>;
+			 *   width    = <240>;
+			 */
+
+			/* 90° CW rotation (top left by Feather TFT battery jack) */
+			mdac     = <0x6C>;
+			x-offset = <40>;
+			y-offset = <53>;
+			height   = <135>;
+			width    = <240>;
 
 			/* Set required properties to defaults from ST7789V datasheet */
 			vcom     = <0x20>;
