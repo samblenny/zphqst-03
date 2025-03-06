@@ -1,0 +1,128 @@
+/*
+ * Copyright (c) 2022 Espressif Systems (Shanghai) Co., Ltd.
+ * Copyright (c) 2025 Sam Blenny
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Derived from zephyr/boards/espressif/esp32s3_devkitm
+ * Modifications by Sam Blenny to work with Feather TFT ESP32-S3
+ *
+ * For ESP32-S3 pinctrl selectors, see:
+ *   https://github.com/zephyrproject-rtos/zephyr/blob/main/include/zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h
+ * For espressif soc dtsi files, see:
+ *   https://github.com/zephyrproject-rtos/zephyr/tree/main/dts/xtensa/espressif/esp32s3
+ */
+/dts-v1/;
+
+#include <espressif/esp32s3/esp32s3_mini_n4r2.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/input/esp32-touch-sensor-input.h>
+#include <espressif/partitions_0x0_amp.dtsi>
+#include "feather_tft_esp32s3-pinctrl.dtsi"
+#include "feather_connector.dtsi"
+#include "mipi_st7789v.dtsi"
+
+/ {
+	model = "Adafruit Feather TFT ESP32-S3 ESP32S3 PSRAM PROCPU";
+	compatible = "espressif,esp32s3";
+
+	aliases {
+		i2c-0 = &i2c0;
+		watchdog0 = &wdt0;
+	};
+
+	chosen {
+		zephyr,sram = &sram1;
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+	};
+
+    leds {
+        compatible = "gpio-leds";
+        led: led_0 {
+            gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+            label = "#13 LED";
+        };
+    };
+
+	aliases {
+		uart-0 = &usb_serial;
+        led0 = &led;
+	};
+};
+
+&uart0 {
+	status = "disabled";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart0_default>;
+	pinctrl-names = "default";
+};
+
+/* GPIO pins 0..31 */
+&gpio0 {
+	status = "okay";
+
+	/* GPIO21 is the Feather TFT ESP23-S3 TFT_I2C_POWER enable pin */
+	tft-i2c-power-en {
+		gpio-hog;
+		gpios = <21 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+};
+
+/* GPIO pins 32..45 -> &gpio1 0 .. &gpio1 13 */
+&gpio1 {
+	status = "okay";
+
+	/* GPIO45 (&gpio1 13) is Feather TFT backlight pin */
+	tft-backlight {
+		gpio-hog;
+		gpios = <13 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+};
+
+&i2c0 {
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-names = "default";
+};
+
+&spi2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+    cs-gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;  /* TFT_CS */
+	pinctrl-0 = <&spim2_default>;
+	pinctrl-names = "default";
+};
+
+&timer0 {
+	status = "disabled";
+};
+
+&timer1 {
+	status = "disabled";
+};
+
+&timer2 {
+	status = "disabled";
+};
+
+&timer3 {
+	status = "disabled";
+};
+
+&wdt0 {
+	status = "okay";
+};
+
+&trng0 {
+	status = "okay";
+};
+
+&usb_serial {
+	status = "okay";
+};

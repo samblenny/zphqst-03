@@ -1,0 +1,76 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2025 Sam Blenny
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Configure 240x135 px ST7789V display over MIPI bus (SPI + DC + RST)
+ *
+ * Related docs & reference code:
+ * - https://docs.zephyrproject.org/latest/build/dts/api/bindings/mipi-dbi/zephyr%2Cmipi-dbi-spi.html
+ * - https://docs.zephyrproject.org/4.0.0/build/dts/api/bindings/display/sitronix%2Cst7789v.html
+ * - https://newhavendisplay.com/content/datasheets/ST7789V.pdf
+ * - https://github.com/adafruit/Adafruit_CircuitPython_ST7789/blob/1.6.4/adafruit_st7789.py
+ * - https://github.com/adafruit/circuitpython/blob/main/shared-bindings/busdisplay/BusDisplay.c
+ * - https://github.com/adafruit/circuitpython/blob/main/shared-module/busdisplay/BusDisplay.c
+ * - https://docs.circuitpython.org/en/latest/shared-bindings/busdisplay/
+ * - https://learn.adafruit.com/adafruit-1-14-240x135-color-tft-breakout/circuitpython-displayio-quickstart
+ *
+ * The Feather TFT ESP32-S3 board uses the same display modeule as the Adafruit
+ * 1.14" 240x135 Color TFT breakout board (Adafruit P/N: 4383). In the Learn
+ * guide for that breakout board, the ST7789 DisplayIO driver gets initialized
+ * with `width=240, height=135, rowstart=40, colstart=53`.
+ */
+
+#include <zephyr/dt-bindings/mipi_dbi/mipi_dbi.h>
+
+&spi2 {
+	/* Datasheet: min serial clock write cycle is 66 ns (15.15 MHz) */
+	clock-frequency = <15000000>; /* 15 MHz */
+};
+
+/ {
+	chosen {
+		zephyr,display = &st7789v_tft_display;
+	};
+
+	mipi_dbi {
+		compatible = "zephyr,mipi-dbi-spi";
+
+		/* Configure spi device with DC and reset pins */
+		spi-dev = <&spi2>;
+		dc-gpios =    <&gpio1 7 GPIO_ACTIVE_HIGH>;  /* GPIO39 -> &gpio1 7 */
+		reset-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;   /* GPIO40 -> &gpio1 8 */
+		write-only;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		st7789v_tft_display: st7789v@0 {
+			compatible = "sitronix,st7789v";
+			reg = <0>;
+			mipi-max-frequency = <1000000>; /* 1 MHz */
+			mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+			/* Offsets adapted from CircuitPython 1.14" TFT Learn guide */
+			x-offset = <52>;  /* don't use 53 (results in row of static) */
+			y-offset = <40>;
+			height = <240>;   /* Y range is 0..319 */
+			width  = <135>;   /* X range is 0..239 */
+
+			/* These values copied from CircuitPython init sequence */
+			colmod   = <0x55>;  /* 16-bit 5-6-5 */
+			mdac     = <0x0C>;
+
+			/* Set required properties to defaults from ST7789V datasheet */
+			vcom     = <0x20>;
+			gctrl    = <0x35>;
+			lcm      = <0x2C>;
+			gamma    = <0x01>;
+			porch-param   = [0C 0C 00 33 33];
+			cmd2en-param  = [5A 69 02 00];
+			pwctrl1-param = [A4 81];
+			pvgam-param   = [d0 00 02 07 0b 1a 31 54 40 29 12 12 12 17];
+			nvgam-param   = [d0 00 02 07 05 25 2d 44 44 1c 18 16 1c 1d];
+			ram-param     = [00 f0];
+			rgb-param     = [40 02 14];
+		};
+	};
+};

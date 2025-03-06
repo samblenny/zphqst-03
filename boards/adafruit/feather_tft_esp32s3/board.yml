@@ -1,0 +1,6 @@
+board:
+  name: feather_tft_esp32s3
+  full_name: Adafruit Feather TFT ESP32-S3
+  vendor: adafruit
+  socs:
+  - name: esp32s3
