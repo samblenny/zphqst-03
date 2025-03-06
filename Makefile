@@ -12,10 +12,16 @@ display:
 		../zephyr/samples/drivers/display             \
 		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
 
-# Build Zephyr shell for Feather RP2350 with OpenOCD and Pi Debug Probe.
+# Build plain Zephyr shell
 shell:
 	west build -b feather_tft_esp32s3/esp32s3/procpu  \
 		../zephyr/samples/subsys/shell/shell_module/  \
+		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
+
+# Build Zephyr shell with wifi support
+wifishell:
+	west build -b feather_tft_esp32s3/esp32s3/procpu  \
+		../zephyr/samples/net/wifi/shell              \
 		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
 
 # Interactively modify config from previous build
@@ -33,4 +39,4 @@ monitor:
 clean:
 	rm -rf build
 
-.PHONY: display shell menuconfig flash monitor clean
+.PHONY: display shell wifishell menuconfig flash monitor clean
