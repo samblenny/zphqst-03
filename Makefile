@@ -24,6 +24,12 @@ wifishell:
 		../zephyr/samples/net/wifi/shell              \
 		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
 
+# Build Zephyr button sample
+button:
+	west build -b feather_tft_esp32s3/esp32s3/procpu  \
+		../zephyr/samples/basic/button                \
+		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
+
 # Interactively modify config from previous build
 menuconfig:
 	west build -t menuconfig
@@ -39,4 +45,4 @@ monitor:
 clean:
 	rm -rf build
 
-.PHONY: display shell wifishell menuconfig flash monitor clean
+.PHONY: display shell wifishell button menuconfig flash monitor clean

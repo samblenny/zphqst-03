@@ -1,0 +1,24 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2025 Sam Blenny
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Docs:
+ * https://docs.zephyrproject.org/latest/build/dts/api/bindings/input/gpio-keys.html
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	buttons {
+		compatible = "gpio-keys";
+		button_0: button_0 {
+			gpios = <&gpio0 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Boot";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	aliases {
+		sw0 = &button_0;
+	};
+};

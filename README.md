@@ -72,6 +72,19 @@ The `make monitor` command runs `west espressif monitor`. Keyboard shortcut to
 exit the serial monitor is **Ctrl+]**.
 
 
+### Zephyr Button Sample
+
+```
+(.venv) $ make clean
+(.venv) $ make button
+(.venv) $ make flash
+(.venv) $ make monitor
+```
+
+When you press the Boot button, this will turn on the red `#13` LED and print
+a message to the serial console.
+
+
 ### Zephyr Wifi Shell
 
 ```

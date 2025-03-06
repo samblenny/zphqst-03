@@ -21,6 +21,7 @@
 #include "feather_tft_esp32s3-pinctrl.dtsi"
 #include "feather_connector.dtsi"
 #include "mipi_st7789v.dtsi"
+#include "buttons.dtsi"
 
 / {
 	model = "Adafruit Feather TFT ESP32-S3 ESP32S3 PSRAM PROCPU";
