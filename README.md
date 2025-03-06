@@ -76,7 +76,7 @@ exit the serial monitor is **Ctrl+]**.
 
 ```
 (.venv) $ make clean
-(.venv) $ make shell
+(.venv) $ make wifishell
 (.venv) $ make flash
 (.venv) $ make monitor
 ```
