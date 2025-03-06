@@ -39,17 +39,17 @@
 		zephyr,code-partition = &slot0_partition;
 	};
 
-    leds {
-        compatible = "gpio-leds";
-        led: led_0 {
-            gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
-            label = "#13 LED";
-        };
-    };
+	leds {
+		compatible = "gpio-leds";
+		led: led_0 {
+			gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+			label = "#13 LED";
+		};
+	};
 
 	aliases {
 		uart-0 = &usb_serial;
-        led0 = &led;
+		led0 = &led;
 	};
 };
 
@@ -94,7 +94,7 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
-    cs-gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;  /* TFT_CS */
+	cs-gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;  /* TFT_CS */
 	pinctrl-0 = <&spim2_default>;
 	pinctrl-names = "default";
 };
