@@ -4,33 +4,23 @@
 # Uncomment the next line if you want extra debug info from cmake
 #_CMAKE_ECHO=-DCMAKE_EXECUTE_PROCESS_COMMAND_ECHO=STDERR
 
-# Build the "display" sample that draws a white background with red, green,
-# blue and gray boxes in the corners. The gray box animates in a cycle of
-# fading gray from black to white.
-display:
-	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		../zephyr/samples/drivers/display             \
-		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
-
-# Build plain Zephyr shell
+# Build custom shell with wifi turned on and extra stuff disabled
 shell:
 	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		../zephyr/samples/subsys/shell/shell_module/  \
-		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
-
-# Build Zephyr shell with wifi support
-wifishell:
-	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		../zephyr/samples/net/wifi/shell              \
-		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
+		samples/buttons_tft_wifi                      \
+		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
+		-DCONFIG_LV_COLOR_16_SWAP=y
 
 # Build Zephyr button sample
 button:
 	west build -b feather_tft_esp32s3/esp32s3/procpu  \
 		../zephyr/samples/basic/button                \
-		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}
+		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
+		-DCONFIG_HEAP_MEM_POOL_SIZE=2048
 
 # Build Zephyr LVGL shell sample
+# This is kinda busted (wrong screen size, hard faults, etc), but it does
+# draw some nice looking text and a big OK button
 lvgl:
 	west build -b feather_tft_esp32s3/esp32s3/procpu  \
 		../zephyr/samples/modules/lvgl/demos          \
@@ -53,4 +43,4 @@ monitor:
 clean:
 	rm -rf build
 
-.PHONY: display shell wifishell button menuconfig flash monitor clean
+.PHONY: shell button lvgl menuconfig flash monitor clean

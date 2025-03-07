@@ -4,21 +4,35 @@
  *
  * Docs:
  * https://docs.zephyrproject.org/latest/build/dts/api/bindings/input/gpio-keys.html
+ * https://docs.zephyrproject.org/latest/build/dts/api/bindings/input/zephyr,lvgl-keypad-input.html
+ * https://docs.lvgl.io/8.0/overview/indev.html (key codes)
+ *
+ * LVGL key codes of potential interest:
+ * LV_KEY_NEXT, LV_KEY_PREV, LV_KEY_ENTER, LV_KEY_UP, LV_KEY_DOWN,
+ * LV_KEY_LEFT, LV_KEY_RIGHT, LV_KEY_ESC,
  */
 
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/lvgl/lvgl.h>
 
 / {
-	buttons {
+	buttons: buttons {
 		compatible = "gpio-keys";
 		button_0: button_0 {
 			gpios = <&gpio0 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 			label = "Boot";
-			zephyr,code = <INPUT_KEY_0>;
+			zephyr,code = <INPUT_KEY_ENTER>;
 		};
 	};
 
 	aliases {
 		sw0 = &button_0;
+	};
+
+	keypad {
+		compatible = "zephyr,lvgl-keypad-input";
+		input = <&buttons>;
+		input-codes = <INPUT_KEY_ENTER>;
+		lvgl-codes = <LV_KEY_LEFT>;
 	};
 };
