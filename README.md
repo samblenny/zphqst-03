@@ -73,9 +73,6 @@ counter to 0.
 (.venv) $ make clean && make lvgl && make flash
 ```
 
-This demo is at the wrong screen size, and the button doesn't work. But, it
-does show a nice button widget and good font rendering.
-
 
 ### Zephyr Shell with wifi connection support
 
