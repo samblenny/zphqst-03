@@ -41,34 +41,18 @@ $ source .venv/bin/activate
 (.venv) $ cd zphqst-03
 ```
 
-
-### Zephyr Display Sample
-
-Build and run Zephyr's display sample on Debian 12 using the zphqst-03
-[Makefile](Makefile):
-
-```
-(.venv) $ make clean && make display && make flash
-```
-
-The code should begin running after `make flash` finishes. If it works, the
-display should have a white background with red, green, blue, and gray
-rectangles in the corners. The gray box's brightness fades between black and
-white.
-
-
-### Zephyr Shell (plain version)
-
-```
-(.venv) $ make clean && make shell && make flash
-(.venv) $ make monitor
-```
+The samples below use `make` in a terminal on Debian 12 to run commands for
+make targets defined in the zphqst-03 [Makefile](Makefile). Using `make`
+avoids a lot of typing that would otherwise be required to provide commandline
+options to `west`.
 
 The `make monitor` command runs `west espressif monitor`. Keyboard shortcut to
 exit the serial monitor is **Ctrl+]**.
 
 
 ### Zephyr Button Sample
+
+This runs zephyr/samples/basic/button:
 
 ```
 (.venv) $ make clean && make button && make flash
@@ -81,6 +65,10 @@ a message to the serial console.
 
 ### Zephyr LVGL Demo
 
+This runs zephyr/samples/subsys/display/lvgl which has a white background with
+a "Hello World!" and a counter. Pressing `sw0` (the Boot button), resets the
+counter to 0.
+
 ```
 (.venv) $ make clean && make lvgl && make flash
 ```
@@ -89,10 +77,13 @@ This demo is at the wrong screen size, and the button doesn't work. But, it
 does show a nice button widget and good font rendering.
 
 
-### Zephyr Wifi Shell
+### Zephyr Shell with wifi connection support
+
+This is a customized version of the Zephyr Shell with wifi and other options
+defined in [zphqst-03/samples/buttons\_tft\_wifi](samples/buttons_tft_wifi).
 
 ```
-(.venv) $ make clean && make wifishell && make flash
+(.venv) $ make clean && make shell && make flash
 (.venv) $ make monitor
 ```
 

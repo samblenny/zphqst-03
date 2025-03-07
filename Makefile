@@ -18,15 +18,15 @@ button:
 		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
 		-DCONFIG_HEAP_MEM_POOL_SIZE=2048
 
-# Build Zephyr LVGL shell sample
-# This is kinda busted (wrong screen size, hard faults, etc), but it does
-# draw some nice looking text and a big OK button
+# Build Zephyr's subsys/display/lvgl sample. This has "Hello world1" in black
+# text on a white background along with a counter that can be reset by
+# pressing sw0 (Boot button).
 lvgl:
 	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		../zephyr/samples/modules/lvgl/demos          \
+		../zephyr/samples/subsys/display/lvgl         \
 		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
-		-DCONFIG_LV_COLOR_16_SWAP=y                   \
-		-DCONFIG_LV_Z_DEMO_MUSIC=n -DCONFIG_LV_Z_DEMO_KEYPAD_AND_ENCODER=y
+		-DCONFIG_HEAP_MEM_POOL_SIZE=2048              \
+		-DCONFIG_LV_COLOR_16_SWAP=y
 
 # Interactively modify config from previous build
 menuconfig:
