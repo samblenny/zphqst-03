@@ -45,8 +45,9 @@
 // Flag for communication between net_callback and main about wifi status
 static int WifiUp = 0;
 
-char AIOUser[64] = {'\0'};
-char AIOKey[64] = {'\0'};
+// AdafruitIO MQTT auth credential buffers
+static char AIOUser[64] = {'\0'};
+static char AIOKey[64] = {'\0'};
 
 /*
 * SHELL COMMANDS
