@@ -33,6 +33,6 @@
 		compatible = "zephyr,lvgl-keypad-input";
 		input = <&buttons>;
 		input-codes = <INPUT_KEY_ENTER>;
-		lvgl-codes = <LV_KEY_LEFT>;
+		lvgl-codes = <LV_KEY_ENTER>;
 	};
 };
