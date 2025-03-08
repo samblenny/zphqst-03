@@ -35,6 +35,7 @@
 #include <lvgl.h>
 #include <lvgl_input_device.h>
 #include <stdio.h>
+#include <string.h>
 
 
 /*
@@ -44,18 +45,26 @@
 // Flag for communication between net_callback and main about wifi status
 static int WifiUp = 0;
 
+char AIOUser[64] = {'\0'};
+char AIOKey[64] = {'\0'};
 
 /*
 * SHELL COMMANDS
 */
 
+// usage: auth <username> <key>
 static int cmd_auth(const struct shell *shell, size_t argc, char *argv[]) {
 	if (argc < 3 || argv == NULL) {
 		return 1;
 	}
-	char *user = argv[1];
-	char *key = argv[2];
-	printk("aio auth argc=%d username='%s' key='%s'\n", argc, user, key);
+	const char *user = argv[1];
+	const char *key = argv[2];
+	// Copy username and key to static buffer that won't go out of scope
+	strncpy(AIOUser, user, sizeof(AIOUser));
+	AIOUser[sizeof(AIOUser)-1] = 0;
+	strncpy(AIOKey, key, sizeof(AIOKey));
+	AIOKey[sizeof(AIOKey)-1] = 0;
+	printk("aio auth: username='%s' key='%s'\n", AIOUser, AIOKey);
 	return 0;
 }
 
