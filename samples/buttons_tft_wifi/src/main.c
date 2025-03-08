@@ -106,13 +106,21 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 */
 int main(void) {
 	// Inits
-	lv_init();
-	lv_tick_set_cb(k_uptime_get_32);
 	const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
 	const struct device *keypad =
 		DEVICE_DT_GET(DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_lvgl_keypad_input));
 	struct net_mgmt_event_callback net_status;
+	lv_init();
+	lv_tick_set_cb(k_uptime_get_32);
 
+	// These macros add the `aio auth` shell command for setting AdafruitIO
+	// MQTT authentication credentials in the Zephyr Shell with USB serial.
+	// When combined with the `wifi connect` shell command, this makes it
+	// unnecessary to hardcode any network authentication secrets. Using the
+	// serial shell is also good for troubleshooting because it lets you see
+	// Zephyr's log messages about any memory allocation or network errors
+	// that might be happening. Otherwise, you might not know.
+	//
 	SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
 		SHELL_CMD_ARG(auth, NULL, "set Adafruit IO username and key\n"
 			"usage: auth <username> <key>\n",
