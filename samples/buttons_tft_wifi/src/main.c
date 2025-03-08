@@ -29,6 +29,8 @@
 #include <lvgl_input_device.h>
 
 
+static int WifiUp = 0;
+
 static void btn1_callback(lv_event_t *event) {
 	printk("button clicked\n");
 }
@@ -37,8 +39,10 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 	uint32_t mgmt_event, struct net_if *iface)
 {
 	if(mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
+		WifiUp = 1;
 		printk("net: WIFI_CONNECT\n");
 	} else if(mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
+		WifiUp = 0;
 		printk("net: WIFI_DISCONNECT\n");
 	} else {
 		printk("net: unknown event\n");
@@ -54,12 +58,23 @@ int main(void) {
 		DEVICE_DT_GET(DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_lvgl_keypad_input));
 	struct net_mgmt_event_callback net_status;
 
+	// Colors
+	lv_color_t bgColor = lv_palette_darken(LV_PALETTE_GREY, 4);
+	lv_color_t wifiColorDown = lv_palette_darken(LV_PALETTE_GREY, 3);
+	lv_color_t wifiColorUp = lv_palette_main(LV_PALETTE_GREEN);
+
 	// Change background color (see also lv_palette_main())
 	lv_obj_t *scr = lv_screen_active();
-	lv_color_t bg = lv_palette_darken(LV_PALETTE_GREY, 4);
-	lv_obj_set_style_bg_color(scr, bg, 0);
+	lv_obj_set_style_bg_color(scr, bgColor, 0);
 
-	// Make widgets and align them on the screen
+	// Make wifi status label
+	lv_obj_t *wifiLabel = lv_label_create(lv_screen_active());
+	lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
+	lv_label_set_text(wifiLabel, LV_SYMBOL_WARNING);
+	lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -10, 5);
+	lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
+
+	// Make Button 1 (gets added to kepad group later)
 	lv_obj_t *btn1 = lv_button_create(lv_screen_active());
 	lv_obj_align(btn1, LV_ALIGN_CENTER, 0, 0);
 	lv_obj_add_event_cb(btn1, btn1_callback, LV_EVENT_PRESSED, NULL);
@@ -80,10 +95,26 @@ int main(void) {
 	net_mgmt_add_event_callback(&net_status);
 
 	// Event loop
+	int prevWifiUp = 0;
 	lv_timer_handler();
 	display_blanking_off(display);
 	while(1) {
+		// Update status line
+		if (prevWifiUp != WifiUp) {
+			if (WifiUp) {
+				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
+				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
+			} else {
+				lv_label_set_text(wifiLabel, LV_SYMBOL_WARNING);
+				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
+			}
+			prevWifiUp = WifiUp;
+		}
+
+		// Call LVGL
 		uint32_t holdoff_ms = lv_timer_handler();
+
+		// Sleep
 		k_msleep(holdoff_ms);
 	}
 }
