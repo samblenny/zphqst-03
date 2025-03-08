@@ -14,6 +14,11 @@
  * https://docs.zephyrproject.org/latest/doxygen/html/group__net__mgmt.html
  * https://docs.zephyrproject.org/latest/doxygen/html/structnet__mgmt__event__callback.html
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/subsys/net/l2/wifi/wifi_shell.c
+ * https://docs.zephyrproject.org/latest/connectivity/networking/api/mqtt.html
+ * https://io.adafruit.com/api/docs/mqtt.html#adafruit-io-mqtt-api
+ *
+ * AdafruitIO MQTT Settings:
+ * host:port: io.adafruit.com:8883
  */
 
 #include <zephyr/kernel.h>
@@ -21,20 +26,56 @@
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/mqtt.h>
 #include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/printk.h>
 #include <inttypes.h>
 #include <lvgl.h>
 #include <lvgl_input_device.h>
+#include <stdio.h>
 
 
+/*
+* STATIC GLOBALS
+*/
+
+// Flag for communication between net_callback and main about wifi status
 static int WifiUp = 0;
 
+
+/*
+* SHELL COMMANDS
+*/
+
+static int cmd_auth(const struct shell *shell, size_t argc, char *argv[]) {
+	if (argc < 3 || argv == NULL) {
+		return 1;
+	}
+	char *user = argv[1];
+	char *key = argv[2];
+	printk("aio auth argc=%d username='%s' key='%s'\n", argc, user, key);
+	return 0;
+}
+
+static int cmd_test(const struct shell *shell, size_t argc, char *argv[]) {
+	printk("todo: aio test\n");
+	return 0;
+}
+
+
+/*
+* EVENT CALLBACKS
+*/
+
+// Handle button events
 static void btn1_callback(lv_event_t *event) {
+	// TODO: trigger MQTT to AdafruitIO
 	printk("button clicked\n");
 }
 
+// Hhandle network manager events (wifi up / wifi down)
 static void net_callback(struct net_mgmt_event_callback *cb,
 	uint32_t mgmt_event, struct net_if *iface)
 {
@@ -49,6 +90,10 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 	}
 }
 
+
+/*
+* MAIN
+*/
 int main(void) {
 	// Inits
 	lv_init();
@@ -57,6 +102,15 @@ int main(void) {
 	const struct device *keypad =
 		DEVICE_DT_GET(DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_lvgl_keypad_input));
 	struct net_mgmt_event_callback net_status;
+
+	SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
+		SHELL_CMD_ARG(auth, NULL, "set Adafruit IO username and key\n"
+			"usage: auth <username> <key>\n",
+			cmd_auth, 3, 0),
+		SHELL_CMD(test, NULL, "Send a test message", cmd_test),
+		SHELL_SUBCMD_SET_END
+	);
+	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
 
 	// Colors
 	lv_color_t bgColor = lv_palette_darken(LV_PALETTE_GREY, 4);
@@ -111,10 +165,8 @@ int main(void) {
 			prevWifiUp = WifiUp;
 		}
 
-		// Call LVGL
+		// Call LVGL then sleep until time for the next tick
 		uint32_t holdoff_ms = lv_timer_handler();
-
-		// Sleep
 		k_msleep(holdoff_ms);
 	}
 }
