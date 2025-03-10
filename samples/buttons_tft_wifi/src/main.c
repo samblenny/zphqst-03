@@ -55,14 +55,17 @@ static int WifiUp = 0;
 
 // AdafruitIO MQTT broker hostname, port, and auth credentials
 typedef struct {
-	char user[64];
-	char pass[64];
-	char host[64];
+	char user[48];
+	char pass[48];
+	char host[48];
+	char topic[48];
 	bool tls;
 	bool valid;
-} aio_config_t;
-static aio_config_t AIOConf = {{'\0'}, {'\0'}, {'\0'}, true, false};
-#define AIO_URL_MAX_LEN (sizeof("mqtts://:@") + 64 + 64 + 64)
+} aio_conf_t;
+static aio_conf_t AIOConf = {{'\0'}, {'\0'}, {'\0'}, {'\0'}, true, false};
+#define AIO_URL_MAX_LEN (sizeof("mqtts://:@") + \
+	sizeof(((aio_conf_t *)0)->user) + sizeof(((aio_conf_t *)0)->pass) + \
+	sizeof(((aio_conf_t *)0)->host) + sizeof(((aio_conf_t *)0)->topic))
 
 // MQTT Buffers and context structs
 /*
@@ -137,13 +140,27 @@ void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 * SHELL COMMANDS
 */
 
-// Handle the aio broker shell command by parsing and saving the URL.
-// Main point of this is to copy username, password, and host strings into
-// buffers that won't get deallocated before they are needed.
-//   usage: broker mqtt[s]://[<user>]:[<key>]@<host>
-static int cmd_broker(const struct shell *shell, size_t argc, char *argv[]) {
-	AIOConf.valid = false;
+// Check that the config was parsed well
+void print_AIOConf() {
+	printk(
+		"AIO Config:\n"
+		"  user:  '%s'\n"
+		"  pass:  '%s'\n"
+		"  host:  '%s'\n"
+		"  topic: '%s'\n"
+		"  tls:   %s\n"
+		"  valid: %s\n",
+		AIOConf.user, AIOConf.pass, AIOConf.host, AIOConf.topic,
+		AIOConf.tls ? "true" : "false", AIOConf.valid ? "true" : "false"
+	);
+}
 
+// Handle the aio conf shell command by parsing and saving the URL.
+// Main point of this is to copy username, password, and host, and topic
+// strings into buffers that won't get deallocated before they are needed.
+//   usage: broker mqtt[s]://[<user>]:[<key>]@<host>/<topic>
+//
+static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	// Avoid dereferencing null pointers if URL argument is missing
 	if (argc < 2 || argv == NULL || argv[1] == NULL) {
 		printk("ERROR: expected a URL\n");
@@ -159,6 +176,14 @@ static int cmd_broker(const struct shell *shell, size_t argc, char *argv[]) {
 		return 2;
 	}
 
+	// Clear config struct and begin normal parsing
+	memset(AIOConf.user, 0, sizeof(AIOConf.user));
+	memset(AIOConf.pass, 0, sizeof(AIOConf.pass));
+	memset(AIOConf.host, 0, sizeof(AIOConf.host));
+	memset(AIOConf.topic, 0, sizeof(AIOConf.topic));
+	AIOConf.tls = false;
+	AIOConf.valid = false;
+
 	// Parse URL scheme prefix (should be "mqtt://" or "mqtts://")
 	char *tls_scheme = "mqtts://";
 	char *nontls_scheme = "mqtt://";
@@ -166,12 +191,10 @@ static int cmd_broker(const struct shell *shell, size_t argc, char *argv[]) {
 		// Scheme = MQTT with TLS
 		cursor += strlen(tls_scheme);
 		AIOConf.tls = true;
-		printk(" tls\n"); // TODO: remove
 	} else if (strncmp(url, nontls_scheme, strlen(nontls_scheme)) == 0) {
 		// Scheme = unencrypted MQTT
 		cursor += strlen(nontls_scheme);
 		AIOConf.tls = false;
-		printk(" nontls\n"); // TODO: remove
 	} else {
 		printk("ERROR: expected mqtt:// or mqtts://\n");
 		return 3;  
@@ -179,9 +202,6 @@ static int cmd_broker(const struct shell *shell, size_t argc, char *argv[]) {
 
 	// Parse username (whatever is between end of scheme and the next ':')
 	char *delim = strchr((char *)cursor, ':');
-	printk("cursor: '%s'\n", cursor ? cursor : "NULL"); // TODO: zap
-	printk("delim: '%s'\n", delim ? delim : "NULL"); // TODO: zap
-	printk("len: %d\n", delim - cursor); // TODO: zap
 	int len = delim - cursor;
 	if (!delim || len < 0) {
 		printk("ERR: missing ':' after username\n");
@@ -190,11 +210,9 @@ static int cmd_broker(const struct shell *shell, size_t argc, char *argv[]) {
 		printk("ERR: username too long\n");
 		return 5;
 	} else {
-		// Copy username string with zero fill (relies on len < sizeof(...))
-		memset(AIOConf.user, 0, sizeof(AIOConf.user));
+		// Copy username string (relies on len < sizeof(...))
 		memcpy(AIOConf.user, cursor, len);
 		cursor = delim + 1;
-		printk(" user: %s\n", AIOConf.user); // TODO: remove
 	}
 
 	// Parse password (whatever is between ':' and '@')
@@ -207,31 +225,49 @@ static int cmd_broker(const struct shell *shell, size_t argc, char *argv[]) {
 		printk("ERR: password too long\n");
 		return 7;
 	} else {
-		// Copy password string with zero fill (relies on len < sizeof(...))
-		memset(AIOConf.pass, 0, sizeof(AIOConf.pass));
+		// Copy password string (relies on len < sizeof(...))
 		memcpy(AIOConf.pass, cursor, len);
 		cursor = delim + 1;
-		printk(" pass: %s\n", AIOConf.pass); // TODO: remove
 	}
 
-	// Parse host (whatever is after '@')
-	len = strlen(cursor);
-	if (len == 0) {
-		printk("ERR: missing hostname after '@'\n");
+	// Parse host (whatever is between '@' and '/')
+	delim = strchr((char *)cursor, '/');
+	len = delim - cursor;
+	if (!delim) {
+		printk("ERR: missing '/' after hostname\n");
 		return 8;
+	} else if (len < 1) {
+		printk("ERR: hostname can't be blank\n");
+		return 9;
 	} else if (len >= sizeof(AIOConf.host)) {
 		printk("ERR: hostname too long\n");
-		return 9;
+		return 10;
 	} else {
-		// Copy hostname string with zero fill (relies on len < sizeof(...))
-		memset(AIOConf.host, 0, sizeof(AIOConf.host));
+		// Copy hostname string (relies on len < sizeof(...))
 		memcpy(AIOConf.host, cursor, len);
-		printk(" host: %s\n", AIOConf.host); // TODO: remove
+		cursor = delim + 1;
 	}
+
+	// Parse topic (whatever is after '/')
+	len = strlen(cursor);
+	if (len <= 0) {
+		printk("ERR: topic can't be blank\n");
+		return 11;
+	} else if (len >= sizeof(AIOConf.topic)) {
+		printk("ERR: topic too long\n");
+		return 12;
+	} else {
+		// Copy topic string (relies on len < sizeof(...))
+		memcpy(AIOConf.topic, cursor, len);
+	}
+
+	// Success
 	AIOConf.valid = true;
+	print_AIOConf();
 	return 0;
 }
 
+// TODO: implement this
 static int cmd_test(const struct shell *shell, size_t argc, char *argv[]) {
 	printk("todo: aio test\n");
 	return 0;
@@ -282,15 +318,16 @@ int main(void) {
 	// unnecessary to hardcode network authentication secrets.
 	//
 	SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
-		SHELL_CMD_ARG(broker, NULL, "configure MQTT broker with URL\n"
-			"usage: broker http[s]://[<user>]:[<key>]@<host>:<port>\n"
-			"    Okay to omit <user> and <key>, but keep the ':' and '@'.\n"
-			"    \"mqtt://...\" uses port 1883 unencrypted.\n"
-			"    \"mqtts://...\" uses port 8883 with TLS.\n"
-			"    Examples:\n"
-			"        broker mqtt://:@192.168.0.50\n"
-			"        broker mqtts://Blinka:aio_1234@io.adafruit.com\n",
-			cmd_broker, 2, 0),
+		SHELL_CMD_ARG(conf, NULL, "Configure MQTT broker and topic with URL\n"
+			"usage: conf mqtt[s]://[<user>]:[<key>]@<host>/<topic>\n"
+			" For cleartext connection on port 1883, use 'mqtt://...'.\n"
+			" For encrypted connection on port 8883, use 'mqtts://...'.\n"
+			" To use a test broker without authentication, you can do\n"
+			" 'mqtt://:@<host>/<topic>' (keep the ':' and '@').\n"
+			" Examples:\n"
+			" conf mqtt://:@192.168.0.50/test\n"
+			" conf mqtts://Blinka:aio_1234@io.adafruit.com/Blinka/f/test\n",
+			cmd_conf, 2, 0),
 		SHELL_CMD(test, NULL, "Publish a test message", cmd_test),
 		SHELL_SUBCMD_SET_END
 	);
