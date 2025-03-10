@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: Copyright 2025 Sam Blenny
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  *
- * Docs & References:
+ * LVGL Docs & Refs:
  * https://docs.lvgl.io/master/details/integration/adding-lvgl-to-your-project/connecting_lvgl.html
  * https://docs.zephyrproject.org/apidoc/latest/group__clock__apis.html
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/subsys/display/lvgl/src/main.c
@@ -11,11 +11,19 @@
  * https://docs.lvgl.io/9.2/porting/timer_handler.html
  * https://docs.lvgl.io/9.2/overview/display.html  (change bg color)
  * https://docs.lvgl.io/9.2/overview/color.html  (color constants)
+ *
+ * Wifi + Network Manager Docs & Refs:
  * https://docs.zephyrproject.org/latest/doxygen/html/group__net__mgmt.html
  * https://docs.zephyrproject.org/latest/doxygen/html/structnet__mgmt__event__callback.html
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/subsys/net/l2/wifi/wifi_shell.c
- * https://docs.zephyrproject.org/latest/connectivity/networking/api/mqtt.html
+ *
+ * AIO + MQTT Docs & Refs:
  * https://io.adafruit.com/api/docs/mqtt.html#adafruit-io-mqtt-api
+ * https://docs.zephyrproject.org/latest/connectivity/networking/api/mqtt.html
+ * https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__evt.html
+ * https://docs.zephyrproject.org/latest/doxygen/html/group__mqtt__socket.html
+ * https://docs.zephyrproject.org/apidoc/latest/structsockaddr.html
+ * https://docs.zephyrproject.org/latest/connectivity/networking/api/sockets.html#secure-sockets-interface
  *
  * AdafruitIO MQTT Settings:
  * host:port: io.adafruit.com:8883
@@ -45,27 +53,182 @@
 // Flag for communication between net_callback and main about wifi status
 static int WifiUp = 0;
 
-// AdafruitIO MQTT auth credential buffers
-static char AIOUser[64] = {'\0'};
-static char AIOKey[64] = {'\0'};
+// AdafruitIO MQTT broker hostname, port, and auth credentials
+typedef struct {
+	char user[64];
+	char pass[64];
+	char host[64];
+	bool tls;
+	bool valid;
+} aio_config_t;
+static aio_config_t AIOConf = {{'\0'}, {'\0'}, {'\0'}, true, false};
+#define AIO_URL_MAX_LEN (sizeof("mqtts://:@") + 64 + 64 + 64)
+
+// MQTT Buffers and context structs
+/*
+static uint8_t MQRxBuf[256];
+static uint8_t MQTxBuf[256];
+static struct mqtt_client Ctx;
+static struct sockaddr_storage Broker;
+*/
+
+void mq_init() {
+/*
+	mqtt_client_init(&Ctx);
+	Ctx.broker = &MQBroker;
+	Ctx.evt_cb = mq_handler;
+	Ctx.client_id.utf_8 = NULL;
+	Ctx.client_id.size = 0;
+	Ctx.password = AIOConf.pass;
+	Ctx.user_name = AIOConf.user;
+	Ctx.protocol_version = MQTT_VERSION_3_1_1;
+	Ctx.transport.type = MQTT_TRANSPORT_NON_SECURE;  // TODO: use TLS
+	Ctx.rx_buf = MQRxBuf;
+	Ctx.rx_buf_size = sizeof(MQRxBuf);
+	Ctx.tx_buf = MQTxBuf;
+	Ctx.tx_buf_size = sizeof(MQTxBuf);
+*/
+	// TODO: add TLS support
+	// Ctx.transport.type = MQTT_TRANSPORT_SECURE;
+	// struct mqtt_sec_config *conf = &Ctx.transport.tls.config;
+	// conf->cipher_list = NULL; 
+	// conf->hostname = MQTT_BROKER_HOSTNAME; 
+}
+
+void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
+	switch (e->type) {
+	case MQTT_EVT_CONNACK:
+		printk("CONNACK\n");
+		break;
+	case MQTT_EVT_DISCONNECT:
+		printk("DISCONNECT\n");
+		break;
+	case MQTT_EVT_PUBLISH:
+		printk("PUBLISH\n");
+		break;
+	case MQTT_EVT_PUBACK:
+		printk("PUBACK\n");
+		break;
+	case MQTT_EVT_PUBREC:
+		printk("PUBREC\n");
+		break;
+	case MQTT_EVT_PUBREL:
+		printk("PUBREL\n");
+		break;
+	case MQTT_EVT_PUBCOMP:
+		printk("PUBCOMP\n");
+		break;
+	case MQTT_EVT_SUBACK:
+		printk("SUBACK\n");
+		break;
+	case MQTT_EVT_UNSUBACK:
+		printk("UNSUBACK\n");
+		break;
+	case MQTT_EVT_PINGRESP:
+		printk("PINGRESP\n");
+		break;
+	default:
+		break;
+	}
+}
+
 
 /*
 * SHELL COMMANDS
 */
 
-// usage: auth <username> <key>
-static int cmd_auth(const struct shell *shell, size_t argc, char *argv[]) {
-	if (argc < 3 || argv == NULL) {
+// Handle the aio broker shell command by parsing and saving the URL.
+// Main point of this is to copy username, password, and host strings into
+// buffers that won't get deallocated before they are needed.
+//   usage: broker mqtt[s]://[<user>]:[<key>]@<host>
+static int cmd_broker(const struct shell *shell, size_t argc, char *argv[]) {
+	AIOConf.valid = false;
+
+	// Avoid dereferencing null pointers if URL argument is missing
+	if (argc < 2 || argv == NULL || argv[1] == NULL) {
+		printk("ERROR: expected a URL\n");
 		return 1;
 	}
-	const char *user = argv[1];
-	const char *key = argv[2];
-	// Copy username and key to static buffer that won't go out of scope
-	strncpy(AIOUser, user, sizeof(AIOUser));
-	AIOUser[sizeof(AIOUser)-1] = 0;
-	strncpy(AIOKey, key, sizeof(AIOKey));
-	AIOKey[sizeof(AIOKey)-1] = 0;
-	printk("aio auth: username='%s' key='%s'\n", AIOUser, AIOKey);
+	// Avoid processing a string that is unterminated or too long. The point
+	// of this is to guard against weird edge cases that could cause strchr()
+	// to misbehave. If we pass this check, using strchr() should be fine.
+	const char *url = argv[1];
+	const char *cursor = url;
+	if (!memchr(url, '\0', AIO_URL_MAX_LEN)) {
+		printk("ERROR: URL is too long\n");
+		return 2;
+	}
+
+	// Parse URL scheme prefix (should be "mqtt://" or "mqtts://")
+	char *tls_scheme = "mqtts://";
+	char *nontls_scheme = "mqtt://";
+	if (strncmp(url, tls_scheme, strlen(tls_scheme)) == 0) {
+		// Scheme = MQTT with TLS
+		cursor += strlen(tls_scheme);
+		AIOConf.tls = true;
+		printk(" tls\n"); // TODO: remove
+	} else if (strncmp(url, nontls_scheme, strlen(nontls_scheme)) == 0) {
+		// Scheme = unencrypted MQTT
+		cursor += strlen(nontls_scheme);
+		AIOConf.tls = false;
+		printk(" nontls\n"); // TODO: remove
+	} else {
+		printk("ERROR: expected mqtt:// or mqtts://\n");
+		return 3;  
+	}
+
+	// Parse username (whatever is between end of scheme and the next ':')
+	char *delim = strchr((char *)cursor, ':');
+	printk("cursor: '%s'\n", cursor ? cursor : "NULL"); // TODO: zap
+	printk("delim: '%s'\n", delim ? delim : "NULL"); // TODO: zap
+	printk("len: %d\n", delim - cursor); // TODO: zap
+	int len = delim - cursor;
+	if (!delim || len < 0) {
+		printk("ERR: missing ':' after username\n");
+		return 4;
+	} else if (len >= sizeof(AIOConf.user)) {
+		printk("ERR: username too long\n");
+		return 5;
+	} else {
+		// Copy username string with zero fill (relies on len < sizeof(...))
+		memset(AIOConf.user, 0, sizeof(AIOConf.user));
+		memcpy(AIOConf.user, cursor, len);
+		cursor = delim + 1;
+		printk(" user: %s\n", AIOConf.user); // TODO: remove
+	}
+
+	// Parse password (whatever is between ':' and '@')
+	delim = strchr((char *)cursor, '@');
+	len = delim - cursor;
+	if (!delim || len < 0) {
+		printk("ERR: missing '@' after password\n");
+		return 6;
+	} else if (len >= sizeof(AIOConf.pass)) {
+		printk("ERR: password too long\n");
+		return 7;
+	} else {
+		// Copy password string with zero fill (relies on len < sizeof(...))
+		memset(AIOConf.pass, 0, sizeof(AIOConf.pass));
+		memcpy(AIOConf.pass, cursor, len);
+		cursor = delim + 1;
+		printk(" pass: %s\n", AIOConf.pass); // TODO: remove
+	}
+
+	// Parse host (whatever is after '@')
+	len = strlen(cursor);
+	if (len == 0) {
+		printk("ERR: missing hostname after '@'\n");
+		return 8;
+	} else if (len >= sizeof(AIOConf.host)) {
+		printk("ERR: hostname too long\n");
+		return 9;
+	} else {
+		// Copy hostname string with zero fill (relies on len < sizeof(...))
+		memset(AIOConf.host, 0, sizeof(AIOConf.host));
+		memcpy(AIOConf.host, cursor, len);
+		printk(" host: %s\n", AIOConf.host); // TODO: remove
+	}
+	AIOConf.valid = true;
 	return 0;
 }
 
@@ -113,19 +276,22 @@ int main(void) {
 	lv_init();
 	lv_tick_set_cb(k_uptime_get_32);
 
-	// These macros add the `aio auth` shell command for setting AdafruitIO
-	// MQTT authentication credentials in the Zephyr Shell with USB serial.
-	// When combined with the `wifi connect` shell command, this makes it
-	// unnecessary to hardcode any network authentication secrets. Using the
-	// serial shell is also good for troubleshooting because it lets you see
-	// Zephyr's log messages about any memory allocation or network errors
-	// that might be happening. Otherwise, you might not know.
+	// These macros add the `aio broker` and `aio test` shell commands for
+	// configuring and testing the MQTT broker in the Zephyr shell over usb
+	// serial. Combined with the `wifi connect` shell command, this makes it
+	// unnecessary to hardcode network authentication secrets.
 	//
 	SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
-		SHELL_CMD_ARG(auth, NULL, "set Adafruit IO username and key\n"
-			"usage: auth <username> <key>\n",
-			cmd_auth, 3, 0),
-		SHELL_CMD(test, NULL, "Send a test message", cmd_test),
+		SHELL_CMD_ARG(broker, NULL, "configure MQTT broker with URL\n"
+			"usage: broker http[s]://[<user>]:[<key>]@<host>:<port>\n"
+			"    Okay to omit <user> and <key>, but keep the ':' and '@'.\n"
+			"    \"mqtt://...\" uses port 1883 unencrypted.\n"
+			"    \"mqtts://...\" uses port 8883 with TLS.\n"
+			"    Examples:\n"
+			"        broker mqtt://:@192.168.0.50\n"
+			"        broker mqtts://Blinka:aio_1234@io.adafruit.com\n",
+			cmd_broker, 2, 0),
+		SHELL_CMD(test, NULL, "Publish a test message", cmd_test),
 		SHELL_SUBCMD_SET_END
 	);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
