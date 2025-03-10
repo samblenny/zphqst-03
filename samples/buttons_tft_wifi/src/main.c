@@ -24,6 +24,7 @@
  * https://docs.zephyrproject.org/latest/doxygen/html/group__mqtt__socket.html
  * https://docs.zephyrproject.org/apidoc/latest/structsockaddr.html
  * https://docs.zephyrproject.org/latest/connectivity/networking/api/sockets.html#secure-sockets-interface
+ * https://github.com/zephyrproject-rtos/zephyr/blob/main/include/zephyr/net/socket.h
  *
  * AdafruitIO MQTT Settings:
  * host:port: io.adafruit.com:8883
@@ -34,12 +35,14 @@
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/socket.h>
 #include <zephyr/net/mqtt.h>
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/printk.h>
 #include <inttypes.h>
+#include <errno.h>
 #include <lvgl.h>
 #include <lvgl_input_device.h>
 #include <stdio.h>
@@ -63,41 +66,38 @@ typedef struct {
 	bool valid;
 } aio_conf_t;
 static aio_conf_t AIOConf = {{'\0'}, {'\0'}, {'\0'}, {'\0'}, true, false};
+
 #define AIO_URL_MAX_LEN (sizeof("mqtts://:@") + \
 	sizeof(((aio_conf_t *)0)->user) + sizeof(((aio_conf_t *)0)->pass) + \
 	sizeof(((aio_conf_t *)0)->host) + sizeof(((aio_conf_t *)0)->topic))
 
+#define AIO_MSG_MAX_LEN (128)
+
+// MQTT connection status
+typedef struct {
+	bool should_poll;
+	bool connected;
+} aio_status_t;
+static aio_status_t AIOStatus = {false, false};
+
 // MQTT Buffers and context structs
-/*
 static uint8_t MQRxBuf[256];
 static uint8_t MQTxBuf[256];
 static struct mqtt_client Ctx;
 static struct sockaddr_storage Broker;
-*/
+//static struct pollfd fds[1];
+// The MQTT examples use pollfd and poll() which gave me all sorts of errors.
+// They may depend on having defined CONFIG_POSIX_API=y. Not sure. But,
+// according to comments in the zephyr/net/socket.h include file, it should
+// work to uze zsock_pollfd with zsock_poll().
+static struct zsock_pollfd fds[1];
 
-void mq_init() {
+
 /*
-	mqtt_client_init(&Ctx);
-	Ctx.broker = &MQBroker;
-	Ctx.evt_cb = mq_handler;
-	Ctx.client_id.utf_8 = NULL;
-	Ctx.client_id.size = 0;
-	Ctx.password = AIOConf.pass;
-	Ctx.user_name = AIOConf.user;
-	Ctx.protocol_version = MQTT_VERSION_3_1_1;
-	Ctx.transport.type = MQTT_TRANSPORT_NON_SECURE;  // TODO: use TLS
-	Ctx.rx_buf = MQRxBuf;
-	Ctx.rx_buf_size = sizeof(MQRxBuf);
-	Ctx.tx_buf = MQTxBuf;
-	Ctx.tx_buf_size = sizeof(MQTxBuf);
+* Misc MQTT Stuff
 */
-	// TODO: add TLS support
-	// Ctx.transport.type = MQTT_TRANSPORT_SECURE;
-	// struct mqtt_sec_config *conf = &Ctx.transport.tls.config;
-	// conf->cipher_list = NULL; 
-	// conf->hostname = MQTT_BROKER_HOSTNAME; 
-}
 
+// Handle MQTT events
 void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	switch (e->type) {
 	case MQTT_EVT_CONNACK:
@@ -105,6 +105,7 @@ void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		break;
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
+		mqtt_abort(&Ctx);
 		break;
 	case MQTT_EVT_PUBLISH:
 		printk("PUBLISH\n");
@@ -197,7 +198,7 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 		AIOConf.tls = false;
 	} else {
 		printk("ERROR: expected mqtt:// or mqtts://\n");
-		return 3;  
+		return 3;
 	}
 
 	// Parse username (whatever is between end of scheme and the next ':')
@@ -264,12 +265,57 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	// Success
 	AIOConf.valid = true;
 	print_AIOConf();
+	// Update string lengths in MQTT context (see main() inits section)
+	Ctx.password->size = strlen(Ctx.password->utf8);
+	Ctx.user_name->size = strlen(Ctx.user_name->utf8);
 	return 0;
 }
 
-// TODO: implement this
-static int cmd_test(const struct shell *shell, size_t argc, char *argv[]) {
-	printk("todo: aio test\n");
+static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
+	printk("cmd_connect\n"); // TODO: zap
+	if (!AIOConf.valid) {
+		printk("ERR: AIO is not configured (try 'aio conf ...')\n");
+		return 1;
+	}
+	int err = mqtt_connect(&Ctx);
+	if(err) {
+		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
+		switch(-err) {
+		case EAFNOSUPPORT:
+			printk("ERR: Addr family not supported\n");
+			break;
+		default:
+			printk("ERR: %d\n", err);
+		}
+		return err;
+	}
+	fds[0].fd = Ctx.transport.tcp.sock;
+	fds[0].events = ZSOCK_POLLIN;
+
+	AIOStatus.should_poll = true;
+	return 0;
+}
+
+static int cmd_disconn(const struct shell *shell, size_t argc, char *argv[]) {
+	printk("cmd_disconn\n"); // TODO: zap
+	return 0;
+}
+
+static int cmd_pub(const struct shell *shell, size_t argc, char *argv[]) {
+	printk("cmd_pub\n"); // TODO: zap
+	// Avoid dereferencing null pointers if URL argument is missing
+	if (argc < 2 || argv == NULL || argv[1] == NULL) {
+		printk("ERROR: expected a message\n");
+		return 1;
+	}
+	// Avoid processing a string that is unterminated or too long. The point
+	// of this is to guard against weird edge cases that could cause strchr()
+	// to misbehave. If we pass this check, using strchr() should be fine.
+	const char *msg = argv[1];
+	if (!memchr(msg, '\0', AIO_MSG_MAX_LEN)) {
+		printk("ERROR: message too long (max: %d bytes)\n", AIO_MSG_MAX_LEN);
+		return 2;
+	}
 	return 0;
 }
 
@@ -301,6 +347,32 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 
 
 /*
+* Shell subcommand static array creation macros
+*/
+
+// These macros add the `aio *` shell commands for configuring and testing the
+// MQTT broker in the Zephyr shell over usb serial.  Combined with the `wifi
+// connect` shell command, this makes it unnecessary to hardcode network
+// authentication secrets.
+//
+SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
+	SHELL_CMD_ARG(conf, NULL, "Configure MQTT broker and topic with URL\n"
+		"Usage: conf mqtt[s]://[<user>]:[<key>]@<host>/<topic>\n"
+		"mqtt:// uses port 1883 and mqtts:// uses 8883.\n"
+		"Examples:\n"
+		"conf mqtt://:@192.168.0.50/test\n"
+		"conf mqtts://Blinka:aio_1234@io.adafruit.com/Blinka/f/test",
+		cmd_conf, 2, 0),
+	SHELL_CMD(connect, NULL, "Connect to broker", cmd_connect),
+	SHELL_CMD_ARG(pub, NULL, "Publish message to the topic\n"
+		"Usage: pub <message>",
+		cmd_pub, 2, 0),
+	SHELL_CMD(disconn, NULL, "Disconnect from broker", cmd_disconn),
+	SHELL_SUBCMD_SET_END
+);
+
+
+/*
 * MAIN
 */
 int main(void) {
@@ -311,27 +383,29 @@ int main(void) {
 	struct net_mgmt_event_callback net_status;
 	lv_init();
 	lv_tick_set_cb(k_uptime_get_32);
-
-	// These macros add the `aio broker` and `aio test` shell commands for
-	// configuring and testing the MQTT broker in the Zephyr shell over usb
-	// serial. Combined with the `wifi connect` shell command, this makes it
-	// unnecessary to hardcode network authentication secrets.
-	//
-	SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
-		SHELL_CMD_ARG(conf, NULL, "Configure MQTT broker and topic with URL\n"
-			"usage: conf mqtt[s]://[<user>]:[<key>]@<host>/<topic>\n"
-			" For cleartext connection on port 1883, use 'mqtt://...'.\n"
-			" For encrypted connection on port 8883, use 'mqtts://...'.\n"
-			" To use a test broker without authentication, you can do\n"
-			" 'mqtt://:@<host>/<topic>' (keep the ':' and '@').\n"
-			" Examples:\n"
-			" conf mqtt://:@192.168.0.50/test\n"
-			" conf mqtts://Blinka:aio_1234@io.adafruit.com/Blinka/f/test\n",
-			cmd_conf, 2, 0),
-		SHELL_CMD(test, NULL, "Publish a test message", cmd_test),
-		SHELL_SUBCMD_SET_END
-	);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
+
+	// MQTT Init
+	mqtt_client_init(&Ctx);
+	struct mqtt_utf8 pass = {(uint8_t *)AIOConf.pass, strlen(AIOConf.pass)};
+	struct mqtt_utf8 user = {(uint8_t *)AIOConf.user, strlen(AIOConf.user)};
+	Ctx.broker = &Broker;
+	Ctx.evt_cb = mq_handler;
+	Ctx.client_id.utf8 = (uint8_t *)"";
+	Ctx.client_id.size = 0;
+	Ctx.password = &pass;
+	Ctx.user_name = &user;
+	Ctx.protocol_version = MQTT_VERSION_3_1_1;
+	Ctx.transport.type = MQTT_TRANSPORT_NON_SECURE;  // TODO: use TLS
+	Ctx.rx_buf = MQRxBuf;
+	Ctx.rx_buf_size = sizeof(MQRxBuf);
+	Ctx.tx_buf = MQTxBuf;
+	Ctx.tx_buf_size = sizeof(MQTxBuf);
+	// TODO: add TLS support
+	// Ctx.transport.type = MQTT_TRANSPORT_SECURE;
+	// struct mqtt_sec_config *conf = &Ctx.transport.tls.config;
+	// conf->cipher_list = NULL;
+	// conf->hostname = MQTT_BROKER_HOSTNAME;
 
 	// Colors
 	lv_color_t bgColor = lv_palette_darken(LV_PALETTE_GREY, 4);
@@ -384,6 +458,12 @@ int main(void) {
 				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
 			}
 			prevWifiUp = WifiUp;
+		}
+
+		// Check on MQTT
+		if (AIOStatus.should_poll && (zsock_poll(fds, 1, 0) > 0)) {
+			mqtt_input(&Ctx);
+			printk("called mqtt_input()\n");
 		}
 
 		// Call LVGL then sleep until time for the next tick
