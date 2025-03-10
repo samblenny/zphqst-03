@@ -50,6 +50,32 @@ The `make monitor` command runs `west espressif monitor`. Keyboard shortcut to
 exit the serial monitor is **Ctrl+]**.
 
 
+### LVGL GUI with Serial Shell Wifi/MQTT Config
+
+This is a simple IoT remote control dashboard demo thing that demonstrates
+button input, LVGL GUI widgets on the TFT, and networking with MQTT over wifi.
+To keep the GUI code simple, this uses Zephyr's serial shell for entering
+authentication credentials and starting the network connections.
+(see [zphqst-03/samples/buttons\_tft\_wifi](samples/buttons_tft_wifi))
+
+To build and run the demo:
+```
+(.venv) $ make clean && make shell && make flash
+(.venv) $ make monitor
+```
+
+Once you're connected to the serial monitor, you can connect to a wifi network
+with the `wifi scan` and `wifi connect` commands:
+
+```
+uart:~$ wifi scan
+...
+uart:~$ wifi connect -s "$SSID" -p "$PASSPHRASE" -k 1
+uart:~$ wifi status
+uart:~$ wifi disconnect
+```
+
+
 ### Zephyr Button Sample
 
 This runs zephyr/samples/basic/button:
@@ -74,54 +100,93 @@ counter to 0.
 ```
 
 
-### Zephyr Shell with wifi connection support
+## Local MQTT Broker for Testing
 
-This is a customized version of the Zephyr Shell with wifi and other options
-defined in [zphqst-03/samples/buttons\_tft\_wifi](samples/buttons_tft_wifi).
+**CAUTION:** This technique is risky if you don't take proper precautions.
+**Don't do this on public wifi** or on a server that has a network interface
+with a public IP address. On a private home network, behind a NAT router, it's
+probably fine, but it would be safer to turn it off when you're done testing.
 
+For testing MQTT stuff, it can be helpful to run your own MQTT broker locally.
+There are a lot of steps involved in setting up the Zephyr code for an MQTT
+client. Attempting to do all of that at once, including TLS certificates and
+authentication, may be difficult to debug. It may help to start with basic
+unencrypted (non-TLS) MQTT connections on a private network, then
+incrementally add encryption and authentication.
+
+This is how I set up a Debian box with the `mosquitto` MQTT broker for
+unencrypted and unauthenticated access on my wifi test network:
+
+Install packages:
 ```
-(.venv) $ make clean && make shell && make flash
-(.venv) $ make monitor
+$ sudo apt install mosquitto mosquitto-clients
 ```
 
-Once you're connected to the serial monitor, you can connect to a wifi network
-with the `wifi scan` and `wifi connect` commands:
-
+Check the IP address assigned to my wifi interface:
 ```
-uart:~$ wifi connect -s "$SSID" -p "$PASSPHRASE" -k 1
-Connection requested
-uart:~$
-uart:~$
-uart:~$ wifi status
-Status: successful
-==================
-State: COMPLETED
-Interface Mode: STATION
-Link Mode: WIFI 4 (802.11n/HT)
-SSID: $SSID
-BSSID: --:--:--:--:--:--
-Band: 2.4GHz
-Channel: 11
-Security:  WPA2-PSK
-MFP: Disable
-RSSI: -48
-Beacon Interval: 3
-DTIM: 0
-TWT: Not supported
-Current PHY TX rate (Mbps) : 0
-Connected
-[00:04:02.708,000] <inf> net_dhcpv4: Received: 192.168.0.161
-uart:~$
-uart:~$
-uart:~$ wifi disconnect
-Disconnection request done (0)
-Disconnect requested
-uart:~$
-uart:~$
-uart:~$ wifi status
-Status: successful
-==================
-State: DISCONNECTED
+$ hostname -I | grep -o '192[^ ]*'
+192.168.0.50
+```
+
+Reconfigure `mosquitto` MQTT broker to listen on wifi IP (DANGER!)
+```
+$ cat <<EOF | sudo tee /etc/mosquitto/conf.d/LAN-listener.conf
+persistence false
+allow_anonymous true
+listener 1883 192.168.0.50
+listener 1883 127.0.0.1
+EOF
+$ sudo systemctl restart mosquitto
+```
+
+Remove the risky unencrypted configuration after initial testing is done:
+```
+$ sudo rm /etc/mosquitto/conf.d/LAN-listener.conf
+$ sudo systemctl restart mosquitto
+```
+
+
+## Using `mosquitto_pub` and `mosquitto_sub` for testing
+
+On Debian, if you install the `mosquitto-clents` package, you can publish and
+subscribe to MQTT topics from the command line. For example, assuming you were
+running an MQTT broker listening on IP address 192.168.0.50, you could start
+two terminal windows (or use `tmux`), and do this:
+
+Terminal 1 (use Ctrl-C to disconnect `mosquitto_sub` when done):
+```
+$ mosquitto_sub --debug -v -L mqtt://192.168.0.50:1883/test
+Client (null) sending CONNECT
+Client (null) received CONNACK (0)
+Client (null) sending SUBSCRIBE (Mid: 1, Topic: test, QoS: 0, Options: 0x00)
+Client (null) received SUBACK
+Subscribed (mid: 1): 0
+Client (null) received PUBLISH (d0, q0, r0, m0, 'test', ... (11 bytes))
+test hello world
+^CClient (null) sending DISCONNECT
+```
+
+Terminal 2:
+```
+$ mosquitto_pub --debug -L mqtt://192.168.0.50:1883/test -m "hello world"
+Client (null) sending CONNECT
+Client (null) received CONNACK (0)
+Client (null) sending PUBLISH (d0, q0, r0, m1, 'test', ... (11 bytes))
+Client (null) sending DISCONNECT
+```
+
+If you wanted to test an authenticated and TLS encrypted connection to the
+Adafruit IO MQTT broker, you could do something like this (replacing `$USER`
+and `$KEY` with your AIO username and API key):
+
+Terminal 1:
+```
+$ mosquitto_sub -L mqtts://$USER:$KEY@io.adafruit.com:8883/$USER/f/test
+```
+
+Terminal 2:
+```
+$ mosquitto_pub -L mqtts://$USER:$KEY@io.adafruit.com:8883/$USER/f/test -m 1
 ```
 
 
