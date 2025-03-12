@@ -314,9 +314,10 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 		//
 		struct sockaddr_in *src = (struct sockaddr_in *)res->ai_addr;
 		struct sockaddr_in *dst = (struct sockaddr_in *)&AIOBroker;
-		dst->sin_family = src->sin_family;
-		dst->sin_port = src->sin_port;
+		dst->sin_family = AF_INET;
 		dst->sin_addr.s_addr = src->sin_addr.s_addr;
+		// Set TLS or non-TLS port with network byte order conversion function
+		dst->sin_port = htons(AIOConf.tls ? 8883 : 1883);
 
 		// Debug print the DNS lookup result
 		char ip_str[INET_ADDRSTRLEN];  // max length IPv4 address string
@@ -347,6 +348,9 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 		switch(-err) {
 		case EAFNOSUPPORT:
 			printk("ERR: Addr family not supported\n");
+			break;
+		case ECONNREFUSED:
+			printk("ERR: Connection refused\n");
 			break;
 		default:
 			printk("ERR: %d\n", err);
@@ -528,7 +532,6 @@ int main(void) {
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
 		if (AIOStatus.should_poll && (poll(fds, 1, 0) > 0)) {
 			mqtt_input(&Ctx);
-			printk("called mqtt_input()\n");
 		}
 
 		// Call LVGL then sleep until time for the next tick
