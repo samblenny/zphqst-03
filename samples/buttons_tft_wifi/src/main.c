@@ -331,8 +331,12 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	AIOConf.valid = true;
 	print_AIOConf();
 	// Update string lengths in MQTT context (see main() inits section)
-	Ctx.password->size = strlen(Ctx.password->utf8);
-	Ctx.user_name->size = strlen(Ctx.user_name->utf8);
+	if(Ctx.password != NULL) {
+		Ctx.password->size = strlen(Ctx.password->utf8);
+	}
+	if(Ctx.user_name != NULL) {
+		Ctx.user_name->size = strlen(Ctx.user_name->utf8);
+	}
 	return 0;
 }
 
@@ -351,6 +355,9 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 			break;
 		case ECONNREFUSED:
 			printk("ERR: Connection refused\n");
+			break;
+		case ETIMEDOUT:
+			printk("ERR: Connection timed out\n");
 			break;
 		default:
 			printk("ERR: %d\n", err);
@@ -460,10 +467,10 @@ int main(void) {
 	struct mqtt_utf8 user = {(uint8_t *)AIOConf.user, strlen(AIOConf.user)};
 	Ctx.broker = &AIOBroker;
 	Ctx.evt_cb = mq_handler;
-	Ctx.client_id.utf8 = (uint8_t *)"";
-	Ctx.client_id.size = 0;
-	Ctx.password = &pass;
-	Ctx.user_name = &user;
+	Ctx.client_id.utf8 = (uint8_t *)"id";  // protocol requires non-empty id
+	Ctx.client_id.size = strlen("id");
+	Ctx.password = NULL; //&pass;
+	Ctx.user_name = NULL; //&user;
 	Ctx.protocol_version = MQTT_VERSION_3_1_1;
 	Ctx.transport.type = MQTT_TRANSPORT_NON_SECURE;  // TODO: use TLS
 	Ctx.rx_buf = MQRxBuf;
@@ -532,6 +539,7 @@ int main(void) {
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
 		if (AIOStatus.should_poll && (poll(fds, 1, 0) > 0)) {
 			mqtt_input(&Ctx);
+			mqtt_live(&Ctx);
 		}
 
 		// Call LVGL then sleep until time for the next tick
