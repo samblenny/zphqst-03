@@ -17,6 +17,12 @@
  * https://docs.zephyrproject.org/latest/doxygen/html/structnet__mgmt__event__callback.html
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/subsys/net/l2/wifi/wifi_shell.c
  *
+ * DNS & Socket Docs & Refs:
+ * https://docs.zephyrproject.org/apidoc/latest/group__bsd__sockets.html
+ * https://docs.zephyrproject.org/apidoc/latest/netdb_8h.html (getaddrinfo / freeaddrinfo)
+ * https://github.com/zephyrproject-rtos/zephyr/blob/main/include/zephyr/net/dns_resolve.h (error codes)
+ * https://docs.zephyrproject.org/apidoc/latest/group__ip__4__6.html (net_addr_ntop)
+ *
  * AIO + MQTT Docs & Refs:
  * https://io.adafruit.com/api/docs/mqtt.html#adafruit-io-mqtt-api
  * https://docs.zephyrproject.org/latest/connectivity/networking/api/mqtt.html
@@ -35,6 +41,7 @@
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/mqtt.h>
 #include <zephyr/net/wifi_mgmt.h>
@@ -50,13 +57,13 @@
 
 
 /*
-* STATIC GLOBALS
+* STATIC GLOBALS AND CONSTANTS
 */
 
 // Flag for communication between net_callback and main about wifi status
 static int WifiUp = 0;
 
-// AdafruitIO MQTT broker hostname, port, and auth credentials
+// AdafruitIO MQTT broker auth credentials, hostname, topic, and scheme
 typedef struct {
 	char user[48];
 	char pass[48];
@@ -66,6 +73,8 @@ typedef struct {
 	bool valid;
 } aio_conf_t;
 static aio_conf_t AIOConf = {{'\0'}, {'\0'}, {'\0'}, {'\0'}, true, false};
+
+struct sockaddr_storage AIOBroker;
 
 #define AIO_URL_MAX_LEN (sizeof("mqtts://:@") + \
 	sizeof(((aio_conf_t *)0)->user) + sizeof(((aio_conf_t *)0)->pass) + \
@@ -84,17 +93,15 @@ static aio_status_t AIOStatus = {false, false};
 static uint8_t MQRxBuf[256];
 static uint8_t MQTxBuf[256];
 static struct mqtt_client Ctx;
-static struct sockaddr_storage Broker;
-//static struct pollfd fds[1];
-// The MQTT examples use pollfd and poll() which gave me all sorts of errors.
-// They may depend on having defined CONFIG_POSIX_API=y. Not sure. But,
-// according to comments in the zephyr/net/socket.h include file, it should
-// work to uze zsock_pollfd with zsock_poll().
-static struct zsock_pollfd fds[1];
+// For the fds file descriptor array, the examples in Zephyr project MQTT docs
+// use the pollfd type and the poll() function, both of which gave me compiler
+// errors until I figured out I needed CONFIG_POSIX_API=y. Note that docs may
+// refer to zsock_pollfd and zsock_poll(). See zephyr/net/socket.h.
+static struct pollfd fds[1];
 
 
 /*
-* Misc MQTT Stuff
+* MISC MQTT STUFF
 */
 
 // Handle MQTT events
@@ -105,7 +112,6 @@ void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		break;
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
-		mqtt_abort(&Ctx);
 		break;
 	case MQTT_EVT_PUBLISH:
 		printk("PUBLISH\n");
@@ -138,7 +144,7 @@ void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 
 
 /*
-* SHELL COMMANDS
+* AIO SHELL COMMANDS
 */
 
 // Check that the config was parsed well
@@ -262,6 +268,64 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 		memcpy(AIOConf.topic, cursor, len);
 	}
 
+	// Resolve hostname to IPv4 IP (IPv6 not supported)
+	// This requires CONFIG_POSIX_API=y and CONFIG_NET_SOCKETS_POSIX_NAMES=y.
+	printk("starting DNS lookup for %s\n", AIOConf.host); // TODO: zap
+	struct addrinfo *res= NULL;
+	const struct addrinfo hint = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+	const char * service = AIOConf.tls ? "8883" : "1883";
+	int err = getaddrinfo(AIOConf.host, service, &hint, &res);
+	if (err) {
+		printk("check DNS_EAI_SYSTEM = %d\n", DNS_EAI_SYSTEM);
+		switch(err) {
+		case DNS_EAI_SYSTEM:
+			printk("ERR: DNS_EAI_SYSTEM: Is wifi connected?\n");
+			break;
+		default:
+			// Look for enum with EAI_* in include/zephyr/net/dns_resolve.h
+			printk("ERR: DNS fail %d\n", err);
+		}
+	} else if (!res || !(res->ai_addr) || (res->ai_family != AF_INET)) {
+		// This shouldn't happen, but check anyway because null pointer
+		// dereference errors are no fun.
+		printk("ERR: DNS result struct was damaged\n");
+		printk("res: %p\n"
+			" .ai_addr: %p\n"
+			" .ai_family: %d\n",
+			res,
+			res ? res->ai_addr : NULL,
+			res ? res->ai_family : -1
+		);
+	} else {
+		// At this point, we can trust that res and res->ai_addr are not NULL
+		// and that the result is an IPv4 address.
+
+		// Copy IPv4 address from DNS lookup (src) to broker struct (dst)
+		//
+		// DANGER! This uses weird pointer casting because that's how the
+		// socket API expects you to handle the possibility that a DNS lookup
+		// can resolve to either or both of IPv4 and IPv6 addresses.
+		//
+		// CAUTION: This ignores the possibility of more than one IP address
+		// and just uses the address from the first result.
+		//
+		struct sockaddr_in *src = (struct sockaddr_in *)res->ai_addr;
+		struct sockaddr_in *dst = (struct sockaddr_in *)&AIOBroker;
+		dst->sin_family = src->sin_family;
+		dst->sin_port = src->sin_port;
+		dst->sin_addr.s_addr = src->sin_addr.s_addr;
+
+		// Debug print the DNS lookup result
+		char ip_str[INET_ADDRSTRLEN];  // max length IPv4 address string
+		net_addr_ntop(AF_INET, &dst->sin_addr, ip_str, sizeof(ip_str));
+		printk("DNS IPv4 result: %s\n", ip_str);
+	}
+	// IMPORTANT: free getaddrinfo() result to avoid memory leak
+	freeaddrinfo(res);
+
 	// Success
 	AIOConf.valid = true;
 	print_AIOConf();
@@ -321,7 +385,7 @@ static int cmd_pub(const struct shell *shell, size_t argc, char *argv[]) {
 
 
 /*
-* EVENT CALLBACKS
+* EVENT CALLBACKS FOR LVGL AND NETWORKING
 */
 
 // Handle button events
@@ -347,7 +411,7 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 
 
 /*
-* Shell subcommand static array creation macros
+* SHELL SUBCOMMAND ARRAY MACROS
 */
 
 // These macros add the `aio *` shell commands for configuring and testing the
@@ -375,6 +439,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
 /*
 * MAIN
 */
+
 int main(void) {
 	// Inits
 	const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
@@ -389,7 +454,7 @@ int main(void) {
 	mqtt_client_init(&Ctx);
 	struct mqtt_utf8 pass = {(uint8_t *)AIOConf.pass, strlen(AIOConf.pass)};
 	struct mqtt_utf8 user = {(uint8_t *)AIOConf.user, strlen(AIOConf.user)};
-	Ctx.broker = &Broker;
+	Ctx.broker = &AIOBroker;
 	Ctx.evt_cb = mq_handler;
 	Ctx.client_id.utf8 = (uint8_t *)"";
 	Ctx.client_id.size = 0;
@@ -460,8 +525,8 @@ int main(void) {
 			prevWifiUp = WifiUp;
 		}
 
-		// Check on MQTT
-		if (AIOStatus.should_poll && (zsock_poll(fds, 1, 0) > 0)) {
+		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
+		if (AIOStatus.should_poll && (poll(fds, 1, 0) > 0)) {
 			mqtt_input(&Ctx);
 			printk("called mqtt_input()\n");
 		}
