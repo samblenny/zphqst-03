@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: Copyright 2025 Sam Blenny
- * SPDX-License-Identifier: Apache-2.0 OR MIT
+ * SPDX-License-Identifier: Apache-2.0
  *
  * LVGL Docs & Refs:
  * https://docs.lvgl.io/master/details/integration/adding-lvgl-to-your-project/connecting_lvgl.html
@@ -37,23 +37,15 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/device.h>
-#include <zephyr/drivers/display.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/net/net_mgmt.h>
-#include <zephyr/net/net_ip.h>
+#include <zephyr/drivers/display.h>  /* display_blanking_off() */
 #include <zephyr/net/socket.h>
 #include <zephyr/net/mqtt.h>
-#include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/net/wifi_mgmt.h>  /* NET_EVENT_WIFI_CONNECT_RESULT, etc */
 #include <zephyr/shell/shell.h>
-#include <zephyr/sys/util.h>
-#include <zephyr/sys/printk.h>
-#include <inttypes.h>
-#include <errno.h>
 #include <lvgl.h>
 #include <lvgl_input_device.h>
-#include <stdio.h>
-#include <string.h>
+#include "zq3.h"
+#include "zq3_mqtt.h"
 
 
 /*
@@ -63,38 +55,26 @@
 // Flag for communication between net_callback and main about wifi status
 static int WifiUp = 0;
 
-// AdafruitIO MQTT broker auth credentials, hostname, topic, and scheme
-typedef struct {
-	char user[48];
-	char pass[48];
-	char host[48];
-	char topic[48];
-	bool tls;
-	bool valid;
-} aio_conf_t;
-static aio_conf_t AIOConf = {{'\0'}, {'\0'}, {'\0'}, {'\0'}, true, false};
+static aio_conf_t AIOConf = {
+	.user = {'\0'},
+	.pass = {'\0'},
+	.host = {'\0'},
+	.topic = {'\0'},
+	.tls = true,
+	.valid = false
+};
 
 struct sockaddr_storage AIOBroker;
 
-#define AIO_URL_MAX_LEN (sizeof("mqtts://:@") + \
-	sizeof(((aio_conf_t *)0)->user) + sizeof(((aio_conf_t *)0)->pass) + \
-	sizeof(((aio_conf_t *)0)->host) + sizeof(((aio_conf_t *)0)->topic))
+static aio_status_t AIOStatus = {
+	.connected = false,
+	.needs_subscription = false,
+	.needs_get = false,
+	.pub_got_0 = false,
+	.pub_got_1 = false
+};
 
-#define AIO_MSG_MAX_LEN (128)
-
-// MQTT connection status
-typedef struct {
-	bool connected;
-	bool needs_subscription;
-	bool needs_get;
-	bool pub_got_0;
-	bool pub_got_1;
-} aio_status_t;
-static aio_status_t AIOStatus = {false, false, false, false, false};
-
-// MQTT Buffers and context structs
-static uint8_t MQRxBuf[256];
-static uint8_t MQTxBuf[256];
+// MQTT context struct
 static struct mqtt_client Ctx;
 // For the fds file descriptor array, the examples in Zephyr project MQTT docs
 // use the pollfd type and the poll() function, both of which gave me compiler
@@ -107,55 +87,6 @@ static struct pollfd fds[1];
 * MISC MQTT STUFF
 */
 
-// Once MQTT connection is up, event loop calls this to start subscription.
-// This is hardcoded to subscribe to the one topic specified in the url that
-// gets parsed by the `aio conf` shell command.
-//
-static int register_subscription() {
-	AIOStatus.needs_subscription = false;
-	if (!AIOStatus.connected) {
-		printk("ERR: can't subscribe because not connected.\n");
-		return 1;
-	}
-	// This is using a C99 feature called a compound literals to initialize a
-	// nested struct. Related docs:
-	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__subscription__list.html
-	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__topic.html
-	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__utf8.html
-	//
-	struct mqtt_topic topic = {
-		.topic = (struct mqtt_utf8){
-			.utf8 = (uint8_t *)AIOConf.topic,
-			.size = strlen(AIOConf.topic)
-		},
-		.qos = MQTT_QOS_0_AT_MOST_ONCE
-	};
-	struct mqtt_subscription_list list = {
-		.list = &topic,
-		.list_count = 1,
-		.message_id = 1
-	};
-	// Send the subscription request
-	int err = mqtt_subscribe(&Ctx, &list);
-	printk("mqtt_subscribe() = %d\n", err);
-	if(err) {
-		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
-		switch(-err) {
-		default:
-			printk("ERR: mqtt_subscribe() = %d\n", err);
-		}
-		return err;
-	}
-	return 0;
-}
-
-// Publish to the topic's /get topic modifier in the styel used by AdafruitIO.
-// This mechanism is an alternative to the normal MQTT retain feature.
-//
-static int publish_get() {
-	// TODO: implement this
-	return 0;
-}
 
 // Handle MQTT events.
 // Related docs:
@@ -165,22 +96,6 @@ static int publish_get() {
 // - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__publish__message.html
 // - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__topic.html
 // - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__binstr.html
-//
-// struct mqtt_evt {
-//     enum mqtt_evt_type type;
-//     union mqtt_evt_param param;
-//     int result;
-// };
-// struct mqtt_publish_param {
-//     struct mqtt_publish_message message;
-//     uint16_t message_id;
-//     uint8_t dup_flag : 1;
-//     uint8_t retain_flag : 1;
-// };
-// struct mqtt_publish_message {
-//     struct mqtt_topic topic;
-//     struct mqtt_binstr payload;
-// };
 //
 static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	switch (e->type) {
@@ -604,6 +519,8 @@ int main(void) {
 
 	// MQTT Init
 	mqtt_client_init(&Ctx);
+	uint8_t MQRxBuf[256];
+	uint8_t MQTxBuf[256];
 	struct mqtt_utf8 pass = {(uint8_t *)AIOConf.pass, strlen(AIOConf.pass)};
 	struct mqtt_utf8 user = {(uint8_t *)AIOConf.user, strlen(AIOConf.user)};
 	Ctx.broker = &AIOBroker;
@@ -696,14 +613,14 @@ int main(void) {
 			// Subscribe if subscribe flag was set by CONNACK handler. Doing
 			// this here lets the event handler return quickly.
 			if (AIOStatus.needs_subscription) {
-				register_subscription();
+				zq3_register_sub(&AIOStatus, &AIOConf, &Ctx);
 			}
 
 			// Publish to the topic's /get topic modifier in the manner that
 			// AdafruitIO uses as an alternative to normal MQTT retain. This
 			// flag gets set by the SUBACK event handler.
 			if (AIOStatus.needs_get) {
-				publish_get();
+				zq3_publish_get();
 			}
 
 			if (AIOStatus.pub_got_0) {
