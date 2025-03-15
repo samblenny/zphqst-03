@@ -8,6 +8,21 @@
 This is meant for the Adafruit Feather TFT ESP32-S3 board.
 
 
+## 2025-03-14 Update: New official Zephyr board defs
+
+Pull request
+[boards: adafruit: add initial support for esp32s3 feather \# 75844](https://github.com/zephyrproject-rtos/zephyr/pull/75844)
+of the zephyr-rtos/zephyr GitHub repo was merged on March 14, 2025, adding
+official support for the Adafruit Feather ESP32-S3 and Feather TFT ESP32-S3
+boards. I hadn't previously noticed that PR or the related issue,
+[Add Support for Adafruit ESP32-S3 and ESP32-S2 Feather Boards \# 68512](https://github.com/zephyrproject-rtos/zephyr/issues/68512).
+
+I plan to review the PR changes and consider how they might interact with,
+or conflict with, what I've been doing here while I was unaware of the pending
+PR. Perhaps I can just switch over to using the official board def, but I'll
+need to see how they handled things in the Devicetree files.
+
+
 ## Dev Tool Setup
 
 1. To run Zephyr's `west` commandline tool, you need to set up a Zephyr
