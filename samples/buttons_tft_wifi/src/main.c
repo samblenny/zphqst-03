@@ -87,8 +87,10 @@ typedef struct {
 	bool connected;
 	bool needs_subscription;
 	bool needs_get;
+	bool pub_got_0;
+	bool pub_got_1;
 } aio_status_t;
-static aio_status_t AIOStatus = {false, false, false};
+static aio_status_t AIOStatus = {false, false, false, false, false};
 
 // MQTT Buffers and context structs
 static uint8_t MQRxBuf[256];
@@ -149,12 +151,37 @@ static int register_subscription() {
 
 // Publish to the topic's /get topic modifier in the styel used by AdafruitIO.
 // This mechanism is an alternative to the normal MQTT retain feature.
+//
 static int publish_get() {
 	// TODO: implement this
 	return 0;
 }
 
-// Handle MQTT events
+// Handle MQTT events.
+// Related docs:
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__evt.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/unionmqtt__evt__param.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__publish__param.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__publish__message.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__topic.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__binstr.html
+//
+// struct mqtt_evt {
+//     enum mqtt_evt_type type;
+//     union mqtt_evt_param param;
+//     int result;
+// };
+// struct mqtt_publish_param {
+//     struct mqtt_publish_message message;
+//     uint16_t message_id;
+//     uint8_t dup_flag : 1;
+//     uint8_t retain_flag : 1;
+// };
+// struct mqtt_publish_message {
+//     struct mqtt_topic topic;
+//     struct mqtt_binstr payload;
+// };
+//
 static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	switch (e->type) {
 	case MQTT_EVT_CONNACK:
@@ -167,7 +194,52 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		AIOStatus.connected = false;
 		break;
 	case MQTT_EVT_PUBLISH:
+		// This happens when the broker informs us that somebody published a
+		// message to a topic we have subscribed to. The parameter, e->param,
+		// will be of type mqtt_publish_param.
 		printk("PUBLISH\n");
+		// First extract topic from the param struct and check for match
+		const struct mqtt_publish_message *m = &e->param.publish.message;
+		const uint8_t *topic = m->topic.topic.utf8;
+		uint32_t t_len = m->topic.topic.size;
+		if (t_len >= sizeof(AIOConf.topic)
+			|| memcmp(topic, AIOConf.topic, t_len)
+		) {
+			printk("ignoring unknown topic (len = %d)\n", t_len);
+			return;
+		}
+		// Second, get the payload data and parse it.
+		// CAUTION: You can't get the payload data from the payload struct.
+		// Instead you have to call this function (see mqtt_evt_type docs).
+		uint8_t buf[32] = {0};
+		uint32_t payload_len = m->payload.len;
+		int count = mqtt_read_publish_payload(&Ctx, buf, sizeof(buf));
+		if (count < 0) {
+			printk("ERR: mqtt_read_publish_payload() = %d\n", count);
+			return;
+		}
+		if (count < payload_len) {
+			printk("ERR: payload truncated %d of %d\n", count, payload_len);
+			return;
+		}
+		// Finally, parse payload data for expected messages: "1" or "0"
+		if (payload_len == 1){
+			printk("H len: %d\n", payload_len);
+			switch((char)buf[0]) {
+			case '0':
+				printk("PUB GOT 0\n");
+				AIOStatus.pub_got_0 = false;  // set flag for event loop
+				break;
+			case '1':
+				printk("PUB GOT 1\n");
+				AIOStatus.pub_got_1 = true;  // set flag for event loop
+				break;
+			default:
+				printk("unknown payload (buf[0] = 0x%02X)\n", buf[0]);
+			}
+		} else {
+			printk("unknown payload (len = %d)\n", payload_len);
+		}
 		break;
 	case MQTT_EVT_PUBACK:
 		printk("PUBACK\n");
@@ -632,6 +704,16 @@ int main(void) {
 			// flag gets set by the SUBACK event handler.
 			if (AIOStatus.needs_get) {
 				publish_get();
+			}
+
+			if (AIOStatus.pub_got_0) {
+				// TODO: update GUI switch = off
+				AIOStatus.pub_got_0 = false;
+			}
+
+			if (AIOStatus.pub_got_1) {
+				// TODO: update GUI switch = on
+				AIOStatus.pub_got_1 = false;
 			}
 		}
 
