@@ -85,8 +85,10 @@ struct sockaddr_storage AIOBroker;
 // MQTT connection status
 typedef struct {
 	bool connected;
+	bool needs_subscription;
+	bool needs_get;
 } aio_status_t;
-static aio_status_t AIOStatus = {false};
+static aio_status_t AIOStatus = {false, false, false};
 
 // MQTT Buffers and context structs
 static uint8_t MQRxBuf[256];
@@ -103,11 +105,62 @@ static struct pollfd fds[1];
 * MISC MQTT STUFF
 */
 
+// Once MQTT connection is up, event loop calls this to start subscription.
+// This is hardcoded to subscribe to the one topic specified in the url that
+// gets parsed by the `aio conf` shell command.
+//
+static int register_subscription() {
+	AIOStatus.needs_subscription = false;
+	if (!AIOStatus.connected) {
+		printk("ERR: can't subscribe because not connected.\n");
+		return 1;
+	}
+	// This is using a C99 feature called a compound literals to initialize a
+	// nested struct. Related docs:
+	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__subscription__list.html
+	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__topic.html
+	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__utf8.html
+	//
+	struct mqtt_topic topic = {
+		.topic = (struct mqtt_utf8){
+			.utf8 = (uint8_t *)AIOConf.topic,
+			.size = strlen(AIOConf.topic)
+		},
+		.qos = MQTT_QOS_0_AT_MOST_ONCE
+	};
+	struct mqtt_subscription_list list = {
+		.list = &topic,
+		.list_count = 1,
+		.message_id = 1
+	};
+	// Send the subscription request
+	int err = mqtt_subscribe(&Ctx, &list);
+	printk("mqtt_subscribe() = %d\n", err);
+	if(err) {
+		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
+		switch(-err) {
+		default:
+			printk("ERR: mqtt_subscribe() = %d\n", err);
+		}
+		return err;
+	}
+	return 0;
+}
+
+// Publish to the topic's /get topic modifier in the styel used by AdafruitIO.
+// This mechanism is an alternative to the normal MQTT retain feature.
+static int publish_get() {
+	// TODO: implement this
+	return 0;
+}
+
 // Handle MQTT events
-void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
+static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	switch (e->type) {
 	case MQTT_EVT_CONNACK:
 		printk("CONNACK\n");
+		// Set flag telling the event loop to register subscription
+		AIOStatus.needs_subscription = true;
 		break;
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
@@ -130,6 +183,8 @@ void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		break;
 	case MQTT_EVT_SUBACK:
 		printk("SUBACK\n");
+		// Set flag telling event loop to publish to /get topic modifier
+		AIOStatus.needs_get = true;
 		break;
 	case MQTT_EVT_UNSUBACK:
 		printk("UNSUBACK\n");
@@ -148,7 +203,7 @@ void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 */
 
 // Check that the config was parsed well
-void print_AIOConf() {
+static void print_AIOConf() {
 	printk(
 		"AIO Config:\n"
 		"  user:  '%s'\n"
@@ -270,7 +325,6 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 
 	// Resolve hostname to IPv4 IP (IPv6 not supported)
 	// This requires CONFIG_POSIX_API=y and CONFIG_NET_SOCKETS_POSIX_NAMES=y.
-	printk("starting DNS lookup for %s\n", AIOConf.host); // TODO: zap
 	struct addrinfo *res= NULL;
 	const struct addrinfo hint = {
 		.ai_family = AF_INET,
@@ -341,7 +395,6 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 }
 
 static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
-	printk("cmd_connect\n"); // TODO: zap
 	if (!AIOConf.valid) {
 		printk("ERR: AIO is not configured (try 'aio conf ...')\n");
 		return 1;
@@ -377,7 +430,6 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 static int
 cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 {
-	printk("cmd_disconnect\n"); // TODO: zap
 	AIOStatus.connected = false;
 	int err = mqtt_disconnect(&Ctx);
 	if(err) {
@@ -556,18 +608,30 @@ int main(void) {
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
 		if (AIOStatus.connected) {
 			// Respond to incoming MQTT messages if needed
-			//
 			if (poll(fds, 1, 0) > 0) {
 				mqtt_input(&Ctx);
 			}
+
 			// Send an MQTT PINGREQ ping several seconds before the keepalive
 			// timer is due to run out. This keeps the TCP connection to the
 			// MQTT broker open so it can send us messages on subscribed topics
 			// as they are published.
-			//
 			int remaining_ms = mqtt_keepalive_time_left(&Ctx);
 			if (remaining_ms < 5000) {
 				mqtt_live(&Ctx);
+			}
+
+			// Subscribe if subscribe flag was set by CONNACK handler. Doing
+			// this here lets the event handler return quickly.
+			if (AIOStatus.needs_subscription) {
+				register_subscription();
+			}
+
+			// Publish to the topic's /get topic modifier in the manner that
+			// AdafruitIO uses as an alternative to normal MQTT retain. This
+			// flag gets set by the SUBACK event handler.
+			if (AIOStatus.needs_get) {
+				publish_get();
 			}
 		}
 
