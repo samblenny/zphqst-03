@@ -352,6 +352,7 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 		switch(-err) {
 		case EISCONN:
 			printk("ERR: Socket already connected\n");
+			break;
 		case EAFNOSUPPORT:
 			printk("ERR: Addr family not supported\n");
 			break;
