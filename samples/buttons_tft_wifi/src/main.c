@@ -84,10 +84,9 @@ struct sockaddr_storage AIOBroker;
 
 // MQTT connection status
 typedef struct {
-	bool should_poll;
 	bool connected;
 } aio_status_t;
-static aio_status_t AIOStatus = {false, false};
+static aio_status_t AIOStatus = {false};
 
 // MQTT Buffers and context structs
 static uint8_t MQRxBuf[256];
@@ -112,6 +111,7 @@ void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		break;
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
+		AIOStatus.connected = false;
 		break;
 	case MQTT_EVT_PUBLISH:
 		printk("PUBLISH\n");
@@ -350,6 +350,8 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 	if(err) {
 		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
 		switch(-err) {
+		case EISCONN:
+			printk("ERR: Socket already connected\n");
 		case EAFNOSUPPORT:
 			printk("ERR: Addr family not supported\n");
 			break;
@@ -367,12 +369,26 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 	fds[0].fd = Ctx.transport.tcp.sock;
 	fds[0].events = ZSOCK_POLLIN;
 
-	AIOStatus.should_poll = true;
+	AIOStatus.connected = true;
 	return 0;
 }
 
-static int cmd_disconn(const struct shell *shell, size_t argc, char *argv[]) {
-	printk("cmd_disconn\n"); // TODO: zap
+static int
+cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
+{
+	printk("cmd_disconnect\n"); // TODO: zap
+	AIOStatus.connected = false;
+	int err = mqtt_disconnect(&Ctx);
+	if(err) {
+		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
+		switch(-err) {
+		case ENOTCONN:
+			printk("ERR: Socket was not connected\n");
+		default:
+			printk("ERR: %d\n", err);
+		}
+		return err;
+	}
 	return 0;
 }
 
@@ -442,7 +458,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
 	SHELL_CMD_ARG(pub, NULL, "Publish message to the topic\n"
 		"Usage: pub <message>",
 		cmd_pub, 2, 0),
-	SHELL_CMD(disconn, NULL, "Disconnect from broker", cmd_disconn),
+	SHELL_CMD(disconnect, NULL, "Disconnect from broker", cmd_disconnect),
 	SHELL_SUBCMD_SET_END
 );
 
@@ -524,7 +540,7 @@ int main(void) {
 	lv_timer_handler();
 	display_blanking_off(display);
 	while(1) {
-		// Update status line
+		// Update the LVGL user interface status line
 		if (prevWifiUp != WifiUp) {
 			if (WifiUp) {
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
@@ -537,9 +553,21 @@ int main(void) {
 		}
 
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
-		if (AIOStatus.should_poll && (poll(fds, 1, 0) > 0)) {
-			mqtt_input(&Ctx);
-			mqtt_live(&Ctx);
+		if (AIOStatus.connected) {
+			// Respond to incoming MQTT messages if needed
+			//
+			if (poll(fds, 1, 0) > 0) {
+				mqtt_input(&Ctx);
+			}
+			// Send an MQTT PINGREQ ping several seconds before the keepalive
+			// timer is due to run out. This keeps the TCP connection to the
+			// MQTT broker open so it can send us messages on subscribed topics
+			// as they are published.
+			//
+			int remaining_ms = mqtt_keepalive_time_left(&Ctx);
+			if (remaining_ms < 5000) {
+				mqtt_live(&Ctx);
+			}
 		}
 
 		// Call LVGL then sleep until time for the next tick
