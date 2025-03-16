@@ -41,6 +41,7 @@
 #include "zq3.h"
 #include "zq3_mqtt.h"
 #include "zq3_dns.h"
+#include "zq3_url.h"
 
 
 /*
@@ -173,20 +174,6 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 * AIO SHELL COMMANDS
 */
 
-// Check that the config was parsed well
-static void print_ZCtx(zq3_context *ctx) {
-	printk(
-		"AIO Config:\n"
-		"  user:  '%s'\n"
-		"  pass:  '%s'\n"
-		"  host:  '%s'\n"
-		"  topic: '%s'\n"
-		"  tls:   %s\n"
-		"  valid: %s\n",
-		ctx->user, ctx->pass, ctx->host, ctx->topic,
-		ctx->tls ? "true" : "false", ctx->valid ? "true" : "false"
-	);
-}
 
 // Handle the aio conf shell command by parsing and saving the URL.
 // Main point of this is to copy username, password, and host, and topic
@@ -203,106 +190,22 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	// of this is to guard against weird edge cases that could cause strchr()
 	// to misbehave. If we pass this check, using strchr() should be fine.
 	const char *url = argv[1];
-	const char *cursor = url;
 	if (!memchr(url, '\0', ZQ3_URL_MAX_LEN)) {
 		printk("ERROR: URL is too long\n");
 		return 2;
 	}
 
-	// Clear config struct and begin normal parsing
-	memset(ZCtx.user, 0, sizeof(ZCtx.user));
-	memset(ZCtx.pass, 0, sizeof(ZCtx.pass));
-	memset(ZCtx.host, 0, sizeof(ZCtx.host));
-	memset(ZCtx.topic, 0, sizeof(ZCtx.topic));
-	ZCtx.tls = false;
-	ZCtx.valid = false;
-
-	// Parse URL scheme prefix (should be "mqtt://" or "mqtts://")
-	char *tls_scheme = "mqtts://";
-	char *nontls_scheme = "mqtt://";
-	if (strncmp(url, tls_scheme, strlen(tls_scheme)) == 0) {
-		// Scheme = MQTT with TLS
-		cursor += strlen(tls_scheme);
-		ZCtx.tls = true;
-	} else if (strncmp(url, nontls_scheme, strlen(nontls_scheme)) == 0) {
-		// Scheme = unencrypted MQTT
-		cursor += strlen(nontls_scheme);
-		ZCtx.tls = false;
-	} else {
-		printk("ERROR: expected mqtt:// or mqtts://\n");
-		return 3;
-	}
-
-	// Parse username (whatever is between end of scheme and the next ':')
-	char *delim = strchr((char *)cursor, ':');
-	int len = delim - cursor;
-	if (!delim || len < 0) {
-		printk("ERR: missing ':' after username\n");
-		return 4;
-	} else if (len >= sizeof(ZCtx.user)) {
-		printk("ERR: username too long\n");
-		return 5;
-	} else {
-		// Copy username string (relies on len < sizeof(...))
-		memcpy(ZCtx.user, cursor, len);
-		cursor = delim + 1;
-	}
-
-	// Parse password (whatever is between ':' and '@')
-	delim = strchr((char *)cursor, '@');
-	len = delim - cursor;
-	if (!delim || len < 0) {
-		printk("ERR: missing '@' after password\n");
-		return 6;
-	} else if (len >= sizeof(ZCtx.pass)) {
-		printk("ERR: password too long\n");
-		return 7;
-	} else {
-		// Copy password string (relies on len < sizeof(...))
-		memcpy(ZCtx.pass, cursor, len);
-		cursor = delim + 1;
-	}
-
-	// Parse host (whatever is between '@' and '/')
-	delim = strchr((char *)cursor, '/');
-	len = delim - cursor;
-	if (!delim) {
-		printk("ERR: missing '/' after hostname\n");
-		return 8;
-	} else if (len < 1) {
-		printk("ERR: hostname can't be blank\n");
-		return 9;
-	} else if (len >= sizeof(ZCtx.host)) {
-		printk("ERR: hostname too long\n");
-		return 10;
-	} else {
-		// Copy hostname string (relies on len < sizeof(...))
-		memcpy(ZCtx.host, cursor, len);
-		cursor = delim + 1;
-	}
-
-	// Parse topic (whatever is after '/')
-	len = strlen(cursor);
-	if (len <= 0) {
-		printk("ERR: topic can't be blank\n");
-		return 11;
-	} else if (len >= sizeof(ZCtx.topic)) {
-		printk("ERR: topic too long\n");
-		return 12;
-	} else {
-		// Copy topic string (relies on len < sizeof(...))
-		memcpy(ZCtx.topic, cursor, len);
-	}
-
-	// Use DNS to resolve hostname to IPv4 IP (IPv6 not supported)
-	int err = zq3_dns_resolve(&ZCtx, &AIOBroker);
+	// Parse the URL into fields of the ZCtx struct
+	int err = zq3_url_parse(&ZCtx, url);
 	if (err) {
+		printk("URL PARSE ERR: %d\n", err);
 		return err;
 	}
 
 	// Success
 	ZCtx.valid = true;
-	print_ZCtx(&ZCtx);
+	zq3_url_print_conf(&ZCtx);
+
 	// Update string lengths in MQTT context (see main() inits section)
 	if(Ctx.password != NULL) {
 		Ctx.password->size = strlen(Ctx.password->utf8);
@@ -310,6 +213,13 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	if(Ctx.user_name != NULL) {
 		Ctx.user_name->size = strlen(Ctx.user_name->utf8);
 	}
+
+	// Use DNS to resolve hostname to IPv4 IP (IPv6 not supported)
+	err = zq3_dns_resolve(&ZCtx, &AIOBroker);
+	if (err) {
+		return err;
+	}
+
 	return 0;
 }
 

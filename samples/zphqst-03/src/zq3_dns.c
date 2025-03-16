@@ -30,12 +30,21 @@ int zq3_dns_resolve(zq3_context *zctx, struct sockaddr_storage *broker) {
 		.ai_family = AF_INET,
 		.ai_socktype = SOCK_STREAM
 	};
+	printk("Attempting DNS lookup for '%s'\n", zctx->host);
 	const char * service = zctx->tls ? TLS_PORTSTR : NON_TLS_PORTSTR;
 	int err = getaddrinfo(zctx->host, service, &hint, &res);
 	if (err) {
 		switch(err) {
 		case DNS_EAI_SYSTEM:
-			printk("DNS_EAI_SYSTEM ERR: Is wifi connected?\n");
+			printk("ERR: DNS_EAI_SYSTEM: Is wifi connected?\n");
+			break;
+		case DNS_EAI_CANCELED:
+			// This happened to me while testing on a wifi router bridged to
+			// a private Ethernet LAN with no gateway and no DNS server. In
+			// that case, the DNS resolver still works fine for IP address
+			// strings, but it can't do hostnames. Solution: use wifi network
+			// that provides access to gateway router and DNS server.
+			printk("ERR: DNS_EAI_SYSTEM: Did DHCP give you a DNS server?\n");
 			break;
 		default:
 			// Look for enum with EAI_* in include/zephyr/net/dns_resolve.h
