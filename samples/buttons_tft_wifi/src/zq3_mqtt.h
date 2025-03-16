@@ -14,5 +14,7 @@ int zq3_publish_get();
 
 int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx);
 
+int zq3_mqtt_disconnect(struct mqtt_client *mctx);
+
 #endif /* ZQ3_MQTT_H */
 

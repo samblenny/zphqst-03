@@ -372,8 +372,10 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
 	if (err) {
-		printk("[MQTT_ERR]\n");
-		ZCtx.state = MQTT_ERR;
+		if (ZCtx.state >= CONNWAIT) {
+			printk("[MQTT_ERR]\n");
+			ZCtx.state = MQTT_ERR;
+		}
 		return err;
 	}
 	printk("[CONWAIT]\n");
@@ -384,21 +386,14 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 static int
 cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 {
-	int err = mqtt_disconnect(&Ctx);
-	if(err) {
-		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
-		switch(-err) {
-		case ENOTCONN:
-			printk("ERR: Socket was not connected\n");
-		default:
-			printk("ERR: %d\n", err);
+	int err = zq3_mqtt_disconnect(&Ctx);
+	if (err) {
+		if (ZCtx.state >= CONNWAIT) {
+			printk("[MQTT_ERR]\n");
+			ZCtx.state = MQTT_ERR;
 		}
-		// Update state
-		printk("[MQTT_ERR]\n");
-		ZCtx.state = MQTT_ERR;
 		return err;
 	}
-	// Update state
 	printk("[WIFI_UP]\n");
 	ZCtx.state = WIFI_UP;
 	return 0;

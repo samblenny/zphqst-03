@@ -48,6 +48,7 @@ int zq3_register_sub(zq3_context *zctx, struct mqtt_client *mctx) {
 	return 0;
 }
 
+
 // Publish to the topic's /get topic modifier in the styel used by AdafruitIO.
 // This mechanism is an alternative to the normal MQTT retain feature.
 //
@@ -90,5 +91,23 @@ int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx) {
 	}
 	zctx->fds[0].fd = mctx->transport.tcp.sock;
 	zctx->fds[0].events = ZSOCK_POLLIN;
+	return 0;
+}
+
+
+// Disconnect from MQTT broker
+int zq3_mqtt_disconnect(struct mqtt_client *mctx) {
+	int err = mqtt_disconnect(mctx);
+	if(err) {
+		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
+		switch(-err) {
+		case ENOTCONN:
+			printk("ERR: Socket was not connected\n");
+			break;
+		default:
+			printk("ERR: %d\n", err);
+		}
+		return err;
+	}
 	return 0;
 }
