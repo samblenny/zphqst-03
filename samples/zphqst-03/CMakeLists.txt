@@ -7,4 +7,5 @@ project(zphqst_03)
 target_sources(app PRIVATE
 	src/main.c
 	src/zq3_mqtt.c
+	src/zq3_dns.c
 )

@@ -17,12 +17,6 @@
  * https://docs.zephyrproject.org/latest/doxygen/html/structnet__mgmt__event__callback.html
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/subsys/net/l2/wifi/wifi_shell.c
  *
- * DNS & Socket Docs & Refs:
- * https://docs.zephyrproject.org/apidoc/latest/group__bsd__sockets.html
- * https://docs.zephyrproject.org/apidoc/latest/netdb_8h.html (getaddrinfo / freeaddrinfo)
- * https://github.com/zephyrproject-rtos/zephyr/blob/main/include/zephyr/net/dns_resolve.h (error codes)
- * https://docs.zephyrproject.org/apidoc/latest/group__ip__4__6.html (net_addr_ntop)
- *
  * AIO + MQTT Docs & Refs:
  * https://io.adafruit.com/api/docs/mqtt.html#adafruit-io-mqtt-api
  * https://docs.zephyrproject.org/latest/connectivity/networking/api/mqtt.html
@@ -46,6 +40,7 @@
 #include <lvgl_input_device.h>
 #include "zq3.h"
 #include "zq3_mqtt.h"
+#include "zq3_dns.h"
 
 
 /*
@@ -299,63 +294,11 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 		memcpy(ZCtx.topic, cursor, len);
 	}
 
-	// Resolve hostname to IPv4 IP (IPv6 not supported)
-	// This requires CONFIG_POSIX_API=y and CONFIG_NET_SOCKETS_POSIX_NAMES=y.
-	struct addrinfo *res= NULL;
-	const struct addrinfo hint = {
-		.ai_family = AF_INET,
-		.ai_socktype = SOCK_STREAM
-	};
-	const char * service = ZCtx.tls ? "8883" : "1883";
-	int err = getaddrinfo(ZCtx.host, service, &hint, &res);
+	// Use DNS to resolve hostname to IPv4 IP (IPv6 not supported)
+	int err = zq3_dns_resolve(&ZCtx, &AIOBroker);
 	if (err) {
-		printk("check DNS_EAI_SYSTEM = %d\n", DNS_EAI_SYSTEM);
-		switch(err) {
-		case DNS_EAI_SYSTEM:
-			printk("ERR: DNS_EAI_SYSTEM: Is wifi connected?\n");
-			break;
-		default:
-			// Look for enum with EAI_* in include/zephyr/net/dns_resolve.h
-			printk("ERR: DNS fail %d\n", err);
-		}
-	} else if (!res || !(res->ai_addr) || (res->ai_family != AF_INET)) {
-		// This shouldn't happen, but check anyway because null pointer
-		// dereference errors are no fun.
-		printk("ERR: DNS result struct was damaged\n");
-		printk("res: %p\n"
-			" .ai_addr: %p\n"
-			" .ai_family: %d\n",
-			res,
-			res ? res->ai_addr : NULL,
-			res ? res->ai_family : -1
-		);
-	} else {
-		// At this point, we can trust that res and res->ai_addr are not NULL
-		// and that the result is an IPv4 address.
-
-		// Copy IPv4 address from DNS lookup (src) to broker struct (dst)
-		//
-		// DANGER! This uses weird pointer casting because that's how the
-		// socket API expects you to handle the possibility that a DNS lookup
-		// can resolve to either or both of IPv4 and IPv6 addresses.
-		//
-		// CAUTION: This ignores the possibility of more than one IP address
-		// and just uses the address from the first result.
-		//
-		struct sockaddr_in *src = (struct sockaddr_in *)res->ai_addr;
-		struct sockaddr_in *dst = (struct sockaddr_in *)&AIOBroker;
-		dst->sin_family = AF_INET;
-		dst->sin_addr.s_addr = src->sin_addr.s_addr;
-		// Set TLS or non-TLS port with network byte order conversion function
-		dst->sin_port = htons(ZCtx.tls ? 8883 : 1883);
-
-		// Debug print the DNS lookup result
-		char ip_str[INET_ADDRSTRLEN];  // max length IPv4 address string
-		net_addr_ntop(AF_INET, &dst->sin_addr, ip_str, sizeof(ip_str));
-		printk("DNS IPv4 result: %s\n", ip_str);
+		return err;
 	}
-	// IMPORTANT: free getaddrinfo() result to avoid memory leak
-	freeaddrinfo(res);
 
 	// Success
 	ZCtx.valid = true;
