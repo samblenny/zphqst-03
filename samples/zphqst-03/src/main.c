@@ -393,11 +393,20 @@ int main(void) {
 
 	// Event loop
 	bool prev_wifi_up = false;
+	zq3_state prev_state = ZCtx.state;
 	lv_timer_handler();
 	display_blanking_off(display);
 	while(1) {
+		// Update MQTT connection status if wifi connection went down
+		if ((ZCtx.state >= CONNWAIT) && !ZCtx.wifi_up) {
+			mqtt_abort(&Ctx);
+			printk("[MQTT_DOWN]\n");
+			ZCtx.state = MQTT_DOWN;
+		}
+
 		// Update the LVGL user interface status line
 		if (prev_wifi_up != ZCtx.wifi_up) {
+			// Show wifi icon or warning icon depending on wifi status
 			if (ZCtx.wifi_up) {
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
@@ -407,12 +416,15 @@ int main(void) {
 			}
 			prev_wifi_up = ZCtx.wifi_up;
 		}
-
-		// Update MQTT connection status if wifi connection went down
-		if ((ZCtx.state >= CONNWAIT) && !ZCtx.wifi_up) {
-			mqtt_abort(&Ctx);
-			printk("[MQTT_DOWN]\n");
-			ZCtx.state = MQTT_DOWN;
+		if (prev_state != ZCtx.state) {
+			// Add an "M" next to the wifi symbol if MQTT is in READY state
+			prev_state = ZCtx.state;
+			if (ZCtx.wifi_up && (ZCtx.state == READY)) {
+				lv_label_set_text(wifiLabel, "M " LV_SYMBOL_WIFI);
+				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
+			} else {
+				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
+			}
 		}
 
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
