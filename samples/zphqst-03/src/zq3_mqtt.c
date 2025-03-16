@@ -64,7 +64,7 @@ int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx) {
 		printk("ERR: AIO is not configured (try 'aio conf ...')\n");
 		return 1;
 	}
-	if (zctx->state < WIFI_UP) {
+	if (!zctx->wifi_up) {
 		printk("ERR: Wifi not connected (try `wifi connect ...`)\n");
 		return 2;
 	}

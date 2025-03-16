@@ -60,7 +60,8 @@ static zq3_context ZCtx = {
 	.topic = {'\0'},
 	.tls = true,
 	.valid = false,
-	.state = WIFI_DOWN,
+	.state = MQTT_DOWN,
+	.wifi_up = false,
 	.pub_got_0 = false,
 	.pub_got_1 = false,
 };
@@ -94,7 +95,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		break;
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
-		ZCtx.state = WIFI_UP;
+		ZCtx.state = MQTT_DOWN;
 		break;
 	case MQTT_EVT_PUBLISH:
 		// This happens when the broker informs us that somebody published a
@@ -394,8 +395,8 @@ cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 		}
 		return err;
 	}
-	printk("[WIFI_UP]\n");
-	ZCtx.state = WIFI_UP;
+	printk("[MQTT_DOWN]\n");
+	ZCtx.state = MQTT_DOWN;
 	return 0;
 }
 
@@ -434,10 +435,10 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 {
 	if(mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		printk("[WIFI_UP]\n");
-		ZCtx.state = WIFI_UP;
+		ZCtx.wifi_up = true;
 	} else if(mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
 		printk("[WIFI_DOWN]\n");
-		ZCtx.state = WIFI_DOWN;
+		ZCtx.wifi_up = false;
 	} else {
 		printk("net: unknown event\n");
 	}
@@ -550,16 +551,22 @@ int main(void) {
 	display_blanking_off(display);
 	while(1) {
 		// Update the LVGL user interface status line
-		bool wifi_up = ZCtx.state >= WIFI_UP;
-		if (prev_wifi_up != wifi_up) {
-			if (wifi_up) {
+		if (prev_wifi_up != ZCtx.wifi_up) {
+			if (ZCtx.wifi_up) {
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
 			} else {
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WARNING);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
 			}
-			prev_wifi_up = wifi_up;
+			prev_wifi_up = ZCtx.wifi_up;
+		}
+
+		// Update MQTT connection status if wifi connection went down
+		if ((ZCtx.state >= CONNWAIT) && !ZCtx.wifi_up) {
+			mqtt_abort(&Ctx);
+			printk("[MQTT_DOWN]\n");
+			ZCtx.state = MQTT_DOWN;
 		}
 
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
