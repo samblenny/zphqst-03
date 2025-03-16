@@ -55,3 +55,40 @@ int zq3_publish_get() {
 	// TODO: implement this
 	return 0;
 }
+
+
+// Connect to MQTT broker
+int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx) {
+	if (!zctx->valid) {
+		printk("ERR: AIO is not configured (try 'aio conf ...')\n");
+		return 1;
+	}
+	if (zctx->state < WIFI_UP) {
+		printk("ERR: Wifi not connected (try `wifi connect ...`)\n");
+		return 2;
+	}
+	int err = mqtt_connect(mctx);
+	if(err) {
+		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
+		switch(-err) {
+		case EISCONN:
+			printk("ERR: Socket already connected\n");
+			break;
+		case EAFNOSUPPORT:
+			printk("ERR: Addr family not supported\n");
+			break;
+		case ECONNREFUSED:
+			printk("ERR: Connection refused\n");
+			break;
+		case ETIMEDOUT:
+			printk("ERR: Connection timed out\n");
+			break;
+		default:
+			printk("ERR: %d\n", err);
+		}
+		return err;
+	}
+	zctx->fds[0].fd = mctx->transport.tcp.sock;
+	zctx->fds[0].events = ZSOCK_POLLIN;
+	return 0;
+}

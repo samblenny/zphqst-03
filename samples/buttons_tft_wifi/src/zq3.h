@@ -5,6 +5,7 @@
 #ifndef ZQ3_H
 #define ZQ3_H
 
+#include <zephyr/net/socket.h>  /* pollfd */
 
 // Sequence of connection states from no connectivity up to mqtt ready to go.
 typedef enum {
@@ -29,6 +30,12 @@ typedef struct {
     zq3_state state;
 	bool pub_got_0;
 	bool pub_got_1;
+	// For the fds file descriptor array, the examples in Zephyr project MQTT
+	// docs use the pollfd type and the poll() function, both of which gave me
+	// compiler errors until I figured out I needed CONFIG_POSIX_API=y. Note
+	// that docs may refer to zsock_pollfd and zsock_poll(). See
+	// zephyr/net/socket.h.
+	struct pollfd fds[1];
 } zq3_context;
 
 #define ZQ3_URL_MAX_LEN (sizeof("mqtts://:@") + \

@@ -69,11 +69,6 @@ struct sockaddr_storage AIOBroker;
 
 // MQTT context struct
 static struct mqtt_client Ctx;
-// For the fds file descriptor array, the examples in Zephyr project MQTT docs
-// use the pollfd type and the poll() function, both of which gave me compiler
-// errors until I figured out I needed CONFIG_POSIX_API=y. Note that docs may
-// refer to zsock_pollfd and zsock_poll(). See zephyr/net/socket.h.
-static struct pollfd fds[1];
 
 
 /*
@@ -375,42 +370,12 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 }
 
 static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
-	if (!ZCtx.valid) {
-		printk("ERR: AIO is not configured (try 'aio conf ...')\n");
-		return 1;
-	}
-	if (ZCtx.state < WIFI_UP) {
-		printk("ERR: Wifi not connected (try `wifi connect ...`)\n");
-		return 2;
-	}
-	int err = mqtt_connect(&Ctx);
-	if(err) {
-		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
-		switch(-err) {
-		case EISCONN:
-			printk("ERR: Socket already connected\n");
-			break;
-		case EAFNOSUPPORT:
-			printk("ERR: Addr family not supported\n");
-			break;
-		case ECONNREFUSED:
-			printk("ERR: Connection refused\n");
-			break;
-		case ETIMEDOUT:
-			printk("ERR: Connection timed out\n");
-			break;
-		default:
-			printk("ERR: %d\n", err);
-		}
-		// Update state
+	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
+	if (err) {
 		printk("[MQTT_ERR]\n");
 		ZCtx.state = MQTT_ERR;
 		return err;
 	}
-	fds[0].fd = Ctx.transport.tcp.sock;
-	fds[0].events = ZSOCK_POLLIN;
-
-	// Update state
 	printk("[CONWAIT]\n");
 	ZCtx.state = CONNWAIT;
 	return 0;
@@ -605,7 +570,7 @@ int main(void) {
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
 		if (ZCtx.state >= CONNWAIT) {
 			// Respond to incoming MQTT messages if needed
-			if (poll(fds, 1, 0) > 0) {
+			if (poll(ZCtx.fds, 1, 0) > 0) {
 				mqtt_input(&Ctx);
 			}
 
