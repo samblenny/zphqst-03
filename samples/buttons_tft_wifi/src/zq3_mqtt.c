@@ -5,19 +5,15 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/net/mqtt.h>
-#include <errno.h>
 #include "zq3.h"
-#include "zq3_mqtt.h"
 
 
 // Once MQTT connection is up, event loop calls this to start subscription.
-// This is hardcoded to subscribe to the one topic specified in the url that
-// gets parsed by the `aio conf` shell command.
+// This is hardcoded to subscribe to the one topic specified in zq3_context.
 //
-int zq3_register_sub(aio_status_t *status, aio_conf_t *conf, struct mqtt_client *ctx) {
-	status->needs_subscription = false;
-	if (!status->connected) {
-		printk("ERR: can't subscribe because not connected.\n");
+int zq3_register_sub(zq3_context *zctx, struct mqtt_client *mctx) {
+	if (zctx->state < CONNACK) {
+		printk("ERR: can't subscribe, mqtt not connected.\n");
 		return 1;
 	}
 	// This is using a C99 feature called a compound literals to initialize a
@@ -28,8 +24,8 @@ int zq3_register_sub(aio_status_t *status, aio_conf_t *conf, struct mqtt_client 
 	//
 	struct mqtt_topic topic = {
 		.topic = (struct mqtt_utf8){
-			.utf8 = (uint8_t *)conf->topic,
-			.size = strlen(conf->topic)
+			.utf8 = (uint8_t *)zctx->topic,
+			.size = strlen(zctx->topic)
 		},
 		.qos = MQTT_QOS_0_AT_MOST_ONCE
 	};
@@ -39,7 +35,7 @@ int zq3_register_sub(aio_status_t *status, aio_conf_t *conf, struct mqtt_client 
 		.message_id = 1
 	};
 	// Send the subscription request
-	int err = mqtt_subscribe(ctx, &list);
+	int err = mqtt_subscribe(mctx, &list);
 	printk("mqtt_subscribe() = %d\n", err);
 	if(err) {
 		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html

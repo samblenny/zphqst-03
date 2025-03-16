@@ -52,27 +52,20 @@
 * STATIC GLOBALS AND CONSTANTS
 */
 
-// Flag for communication between net_callback and main about wifi status
-static int WifiUp = 0;
-
-static aio_conf_t AIOConf = {
+// Context for wifi status, mqtt config, and mqtt status
+static zq3_context ZCtx = {
 	.user = {'\0'},
 	.pass = {'\0'},
 	.host = {'\0'},
 	.topic = {'\0'},
 	.tls = true,
-	.valid = false
+	.valid = false,
+	.state = WIFI_DOWN,
+	.pub_got_0 = false,
+	.pub_got_1 = false,
 };
 
 struct sockaddr_storage AIOBroker;
-
-static aio_status_t AIOStatus = {
-	.connected = false,
-	.needs_subscription = false,
-	.needs_get = false,
-	.pub_got_0 = false,
-	.pub_got_1 = false
-};
 
 // MQTT context struct
 static struct mqtt_client Ctx;
@@ -102,11 +95,11 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	case MQTT_EVT_CONNACK:
 		printk("CONNACK\n");
 		// Set flag telling the event loop to register subscription
-		AIOStatus.needs_subscription = true;
+		ZCtx.state = CONNACK;
 		break;
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
-		AIOStatus.connected = false;
+		ZCtx.state = WIFI_UP;
 		break;
 	case MQTT_EVT_PUBLISH:
 		// This happens when the broker informs us that somebody published a
@@ -117,8 +110,8 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		const struct mqtt_publish_message *m = &e->param.publish.message;
 		const uint8_t *topic = m->topic.topic.utf8;
 		uint32_t t_len = m->topic.topic.size;
-		if (t_len >= sizeof(AIOConf.topic)
-			|| memcmp(topic, AIOConf.topic, t_len)
+		if (t_len >= sizeof(ZCtx.topic)
+			|| memcmp(topic, ZCtx.topic, t_len)
 		) {
 			printk("ignoring unknown topic (len = %d)\n", t_len);
 			return;
@@ -143,11 +136,11 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 			switch((char)buf[0]) {
 			case '0':
 				printk("PUB GOT 0\n");
-				AIOStatus.pub_got_0 = false;  // set flag for event loop
+				ZCtx.pub_got_0 = false;  // set flag for event loop
 				break;
 			case '1':
 				printk("PUB GOT 1\n");
-				AIOStatus.pub_got_1 = true;  // set flag for event loop
+				ZCtx.pub_got_1 = true;  // set flag for event loop
 				break;
 			default:
 				printk("unknown payload (buf[0] = 0x%02X)\n", buf[0]);
@@ -171,7 +164,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	case MQTT_EVT_SUBACK:
 		printk("SUBACK\n");
 		// Set flag telling event loop to publish to /get topic modifier
-		AIOStatus.needs_get = true;
+		ZCtx.state = SUBACK;
 		break;
 	case MQTT_EVT_UNSUBACK:
 		printk("UNSUBACK\n");
@@ -190,7 +183,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 */
 
 // Check that the config was parsed well
-static void print_AIOConf() {
+static void print_ZCtx(zq3_context *ctx) {
 	printk(
 		"AIO Config:\n"
 		"  user:  '%s'\n"
@@ -199,8 +192,8 @@ static void print_AIOConf() {
 		"  topic: '%s'\n"
 		"  tls:   %s\n"
 		"  valid: %s\n",
-		AIOConf.user, AIOConf.pass, AIOConf.host, AIOConf.topic,
-		AIOConf.tls ? "true" : "false", AIOConf.valid ? "true" : "false"
+		ctx->user, ctx->pass, ctx->host, ctx->topic,
+		ctx->tls ? "true" : "false", ctx->valid ? "true" : "false"
 	);
 }
 
@@ -220,18 +213,18 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	// to misbehave. If we pass this check, using strchr() should be fine.
 	const char *url = argv[1];
 	const char *cursor = url;
-	if (!memchr(url, '\0', AIO_URL_MAX_LEN)) {
+	if (!memchr(url, '\0', ZQ3_URL_MAX_LEN)) {
 		printk("ERROR: URL is too long\n");
 		return 2;
 	}
 
 	// Clear config struct and begin normal parsing
-	memset(AIOConf.user, 0, sizeof(AIOConf.user));
-	memset(AIOConf.pass, 0, sizeof(AIOConf.pass));
-	memset(AIOConf.host, 0, sizeof(AIOConf.host));
-	memset(AIOConf.topic, 0, sizeof(AIOConf.topic));
-	AIOConf.tls = false;
-	AIOConf.valid = false;
+	memset(ZCtx.user, 0, sizeof(ZCtx.user));
+	memset(ZCtx.pass, 0, sizeof(ZCtx.pass));
+	memset(ZCtx.host, 0, sizeof(ZCtx.host));
+	memset(ZCtx.topic, 0, sizeof(ZCtx.topic));
+	ZCtx.tls = false;
+	ZCtx.valid = false;
 
 	// Parse URL scheme prefix (should be "mqtt://" or "mqtts://")
 	char *tls_scheme = "mqtts://";
@@ -239,11 +232,11 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	if (strncmp(url, tls_scheme, strlen(tls_scheme)) == 0) {
 		// Scheme = MQTT with TLS
 		cursor += strlen(tls_scheme);
-		AIOConf.tls = true;
+		ZCtx.tls = true;
 	} else if (strncmp(url, nontls_scheme, strlen(nontls_scheme)) == 0) {
 		// Scheme = unencrypted MQTT
 		cursor += strlen(nontls_scheme);
-		AIOConf.tls = false;
+		ZCtx.tls = false;
 	} else {
 		printk("ERROR: expected mqtt:// or mqtts://\n");
 		return 3;
@@ -255,12 +248,12 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	if (!delim || len < 0) {
 		printk("ERR: missing ':' after username\n");
 		return 4;
-	} else if (len >= sizeof(AIOConf.user)) {
+	} else if (len >= sizeof(ZCtx.user)) {
 		printk("ERR: username too long\n");
 		return 5;
 	} else {
 		// Copy username string (relies on len < sizeof(...))
-		memcpy(AIOConf.user, cursor, len);
+		memcpy(ZCtx.user, cursor, len);
 		cursor = delim + 1;
 	}
 
@@ -270,12 +263,12 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	if (!delim || len < 0) {
 		printk("ERR: missing '@' after password\n");
 		return 6;
-	} else if (len >= sizeof(AIOConf.pass)) {
+	} else if (len >= sizeof(ZCtx.pass)) {
 		printk("ERR: password too long\n");
 		return 7;
 	} else {
 		// Copy password string (relies on len < sizeof(...))
-		memcpy(AIOConf.pass, cursor, len);
+		memcpy(ZCtx.pass, cursor, len);
 		cursor = delim + 1;
 	}
 
@@ -288,12 +281,12 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	} else if (len < 1) {
 		printk("ERR: hostname can't be blank\n");
 		return 9;
-	} else if (len >= sizeof(AIOConf.host)) {
+	} else if (len >= sizeof(ZCtx.host)) {
 		printk("ERR: hostname too long\n");
 		return 10;
 	} else {
 		// Copy hostname string (relies on len < sizeof(...))
-		memcpy(AIOConf.host, cursor, len);
+		memcpy(ZCtx.host, cursor, len);
 		cursor = delim + 1;
 	}
 
@@ -302,12 +295,12 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	if (len <= 0) {
 		printk("ERR: topic can't be blank\n");
 		return 11;
-	} else if (len >= sizeof(AIOConf.topic)) {
+	} else if (len >= sizeof(ZCtx.topic)) {
 		printk("ERR: topic too long\n");
 		return 12;
 	} else {
 		// Copy topic string (relies on len < sizeof(...))
-		memcpy(AIOConf.topic, cursor, len);
+		memcpy(ZCtx.topic, cursor, len);
 	}
 
 	// Resolve hostname to IPv4 IP (IPv6 not supported)
@@ -317,8 +310,8 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 		.ai_family = AF_INET,
 		.ai_socktype = SOCK_STREAM
 	};
-	const char * service = AIOConf.tls ? "8883" : "1883";
-	int err = getaddrinfo(AIOConf.host, service, &hint, &res);
+	const char * service = ZCtx.tls ? "8883" : "1883";
+	int err = getaddrinfo(ZCtx.host, service, &hint, &res);
 	if (err) {
 		printk("check DNS_EAI_SYSTEM = %d\n", DNS_EAI_SYSTEM);
 		switch(err) {
@@ -358,7 +351,7 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 		dst->sin_family = AF_INET;
 		dst->sin_addr.s_addr = src->sin_addr.s_addr;
 		// Set TLS or non-TLS port with network byte order conversion function
-		dst->sin_port = htons(AIOConf.tls ? 8883 : 1883);
+		dst->sin_port = htons(ZCtx.tls ? 8883 : 1883);
 
 		// Debug print the DNS lookup result
 		char ip_str[INET_ADDRSTRLEN];  // max length IPv4 address string
@@ -369,8 +362,8 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	freeaddrinfo(res);
 
 	// Success
-	AIOConf.valid = true;
-	print_AIOConf();
+	ZCtx.valid = true;
+	print_ZCtx(&ZCtx);
 	// Update string lengths in MQTT context (see main() inits section)
 	if(Ctx.password != NULL) {
 		Ctx.password->size = strlen(Ctx.password->utf8);
@@ -382,9 +375,13 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 }
 
 static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
-	if (!AIOConf.valid) {
+	if (!ZCtx.valid) {
 		printk("ERR: AIO is not configured (try 'aio conf ...')\n");
 		return 1;
+	}
+	if (ZCtx.state < WIFI_UP) {
+		printk("ERR: Wifi not connected (try `wifi connect ...`)\n");
+		return 2;
 	}
 	int err = mqtt_connect(&Ctx);
 	if(err) {
@@ -405,19 +402,23 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 		default:
 			printk("ERR: %d\n", err);
 		}
+		// Update state
+		printk("[MQTT_ERR]\n");
+		ZCtx.state = MQTT_ERR;
 		return err;
 	}
 	fds[0].fd = Ctx.transport.tcp.sock;
 	fds[0].events = ZSOCK_POLLIN;
 
-	AIOStatus.connected = true;
+	// Update state
+	printk("[CONWAIT]\n");
+	ZCtx.state = CONNWAIT;
 	return 0;
 }
 
 static int
 cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 {
-	AIOStatus.connected = false;
 	int err = mqtt_disconnect(&Ctx);
 	if(err) {
 		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
@@ -427,8 +428,14 @@ cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 		default:
 			printk("ERR: %d\n", err);
 		}
+		// Update state
+		printk("[MQTT_ERR]\n");
+		ZCtx.state = MQTT_ERR;
 		return err;
 	}
+	// Update state
+	printk("[WIFI_UP]\n");
+	ZCtx.state = WIFI_UP;
 	return 0;
 }
 
@@ -443,8 +450,8 @@ static int cmd_pub(const struct shell *shell, size_t argc, char *argv[]) {
 	// of this is to guard against weird edge cases that could cause strchr()
 	// to misbehave. If we pass this check, using strchr() should be fine.
 	const char *msg = argv[1];
-	if (!memchr(msg, '\0', AIO_MSG_MAX_LEN)) {
-		printk("ERROR: message too long (max: %d bytes)\n", AIO_MSG_MAX_LEN);
+	if (!memchr(msg, '\0', ZQ3_MSG_MAX_LEN)) {
+		printk("ERROR: message too long (max: %d bytes)\n", ZQ3_MSG_MAX_LEN);
 		return 2;
 	}
 	return 0;
@@ -466,11 +473,11 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 	uint32_t mgmt_event, struct net_if *iface)
 {
 	if(mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
-		WifiUp = 1;
-		printk("net: WIFI_CONNECT\n");
+		printk("[WIFI_UP]\n");
+		ZCtx.state = WIFI_UP;
 	} else if(mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
-		WifiUp = 0;
-		printk("net: WIFI_DISCONNECT\n");
+		printk("[WIFI_DOWN]\n");
+		ZCtx.state = WIFI_DOWN;
 	} else {
 		printk("net: unknown event\n");
 	}
@@ -521,8 +528,8 @@ int main(void) {
 	mqtt_client_init(&Ctx);
 	uint8_t MQRxBuf[256];
 	uint8_t MQTxBuf[256];
-	struct mqtt_utf8 pass = {(uint8_t *)AIOConf.pass, strlen(AIOConf.pass)};
-	struct mqtt_utf8 user = {(uint8_t *)AIOConf.user, strlen(AIOConf.user)};
+	struct mqtt_utf8 pass = {(uint8_t *)ZCtx.pass, strlen(ZCtx.pass)};
+	struct mqtt_utf8 user = {(uint8_t *)ZCtx.user, strlen(ZCtx.user)};
 	Ctx.broker = &AIOBroker;
 	Ctx.evt_cb = mq_handler;
 	Ctx.client_id.utf8 = (uint8_t *)"id";  // protocol requires non-empty id
@@ -578,24 +585,25 @@ int main(void) {
 	net_mgmt_add_event_callback(&net_status);
 
 	// Event loop
-	int prevWifiUp = 0;
+	bool prev_wifi_up = false;
 	lv_timer_handler();
 	display_blanking_off(display);
 	while(1) {
 		// Update the LVGL user interface status line
-		if (prevWifiUp != WifiUp) {
-			if (WifiUp) {
+		bool wifi_up = ZCtx.state >= WIFI_UP;
+		if (prev_wifi_up != wifi_up) {
+			if (wifi_up) {
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
 			} else {
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WARNING);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
 			}
-			prevWifiUp = WifiUp;
+			prev_wifi_up = wifi_up;
 		}
 
 		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
-		if (AIOStatus.connected) {
+		if (ZCtx.state >= CONNWAIT) {
 			// Respond to incoming MQTT messages if needed
 			if (poll(fds, 1, 0) > 0) {
 				mqtt_input(&Ctx);
@@ -610,27 +618,45 @@ int main(void) {
 				mqtt_live(&Ctx);
 			}
 
-			// Subscribe if subscribe flag was set by CONNACK handler. Doing
-			// this here lets the event handler return quickly.
-			if (AIOStatus.needs_subscription) {
-				zq3_register_sub(&AIOStatus, &AIOConf, &Ctx);
+			// Part of the state machine for bringing up full MQTT connection
+			int err = 0;
+			switch(ZCtx.state) {
+			case CONNACK:
+				// Subscribe to topic as soon as MQTT connection is up
+				err = zq3_register_sub(&ZCtx, &Ctx);
+				if (err) {
+					printk("[MQTT_ERR]\n");
+					ZCtx.state = MQTT_ERR;
+				} else {
+					printk("[SUBWAIT]\n");
+					ZCtx.state = SUBWAIT;
+				}
+				break;
+			case SUBACK:
+				// Publish to the topic's /get topic modifier as soon as the
+				// subscription has been ACK'd. This is meant to work with
+				// AdafruitIO which does not support normal MQTT retain.
+				err = zq3_publish_get();
+				if (err) {
+					printk("[MQTT_ERR]\n");
+					ZCtx.state = MQTT_ERR;
+				} else {
+					printk("[READY]\n");
+					ZCtx.state = READY;
+				}
+				break;
+			default:
+				/* NOP */
 			}
 
-			// Publish to the topic's /get topic modifier in the manner that
-			// AdafruitIO uses as an alternative to normal MQTT retain. This
-			// flag gets set by the SUBACK event handler.
-			if (AIOStatus.needs_get) {
-				zq3_publish_get();
-			}
-
-			if (AIOStatus.pub_got_0) {
+			if (ZCtx.pub_got_0) {
 				// TODO: update GUI switch = off
-				AIOStatus.pub_got_0 = false;
+				ZCtx.pub_got_0 = false;
 			}
 
-			if (AIOStatus.pub_got_1) {
+			if (ZCtx.pub_got_1) {
 				// TODO: update GUI switch = on
-				AIOStatus.pub_got_1 = false;
+				ZCtx.pub_got_1 = false;
 			}
 		}
 

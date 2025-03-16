@@ -6,13 +6,9 @@
 #define ZQ3_MQTT_H
 
 #include <zephyr/net/mqtt.h>  /* struct mqtt_client */
-#include "zq3.h"              /* aio_status_t, aio_conf_t */
+#include "zq3.h"              /* zq3_context */
 
-int zq3_register_sub(
-	aio_status_t *status,
-	aio_conf_t *conf,
-	struct mqtt_client *ctx
-);
+int zq3_register_sub(zq3_context *zctx, struct mqtt_client *mctx);
 
 int zq3_publish_get();
 
