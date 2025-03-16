@@ -94,7 +94,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	switch (e->type) {
 	case MQTT_EVT_CONNACK:
 		printk("CONNACK\n");
-		// Set flag telling the event loop to register subscription
+		// Update state telling the event loop to register subscription
 		ZCtx.state = CONNACK;
 		break;
 	case MQTT_EVT_DISCONNECT:
@@ -163,7 +163,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		break;
 	case MQTT_EVT_SUBACK:
 		printk("SUBACK\n");
-		// Set flag telling event loop to publish to /get topic modifier
+		// Update state telling event loop to publish to /get topic modifier
 		ZCtx.state = SUBACK;
 		break;
 	case MQTT_EVT_UNSUBACK:
