@@ -71,7 +71,7 @@ This is a simple IoT remote control dashboard demo thing that demonstrates
 button input, LVGL GUI widgets on the TFT, and networking with MQTT over wifi.
 To keep the GUI code simple, this uses Zephyr's serial shell for entering
 authentication credentials and starting the network connections.
-(see [zphqst-03/samples/buttons\_tft\_wifi](samples/buttons_tft_wifi))
+(see [zphqst-03/samples/zphqst-03](samples/zphqst-03))
 
 To build and run the demo:
 ```

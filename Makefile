@@ -7,7 +7,7 @@
 # Build custom shell with wifi turned on and extra stuff disabled
 shell:
 	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		samples/buttons_tft_wifi                      \
+		samples/zphqst-03                             \
 		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
 		-DCONFIG_LV_COLOR_16_SWAP=y
 
