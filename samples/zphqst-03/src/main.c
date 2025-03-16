@@ -40,7 +40,6 @@
 #include <lvgl_input_device.h>
 #include "zq3.h"
 #include "zq3_mqtt.h"
-#include "zq3_dns.h"
 #include "zq3_url.h"
 
 
@@ -212,12 +211,6 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	}
 	if(Ctx.user_name != NULL) {
 		Ctx.user_name->size = strlen(Ctx.user_name->utf8);
-	}
-
-	// Use DNS to resolve hostname to IPv4 IP (IPv6 not supported)
-	err = zq3_dns_resolve(&ZCtx, &AIOBroker);
-	if (err) {
-		return err;
 	}
 
 	return 0;

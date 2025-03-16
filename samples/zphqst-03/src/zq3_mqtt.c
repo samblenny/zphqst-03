@@ -6,6 +6,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net/mqtt.h>
 #include "zq3.h"
+#include "zq3_dns.h"
 
 
 // Once MQTT connection is up, event loop calls this to start subscription.
@@ -68,7 +69,18 @@ int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx) {
 		printk("ERR: Wifi not connected (try `wifi connect ...`)\n");
 		return 2;
 	}
-	int err = mqtt_connect(mctx);
+	if (mctx->broker == NULL) {
+		printk("ERR: MQTT context's broker struct is null\n");
+		return 3;
+	}
+
+	// Use DNS to resolve hostname to IPv4 IP (IPv6 not supported)
+	int err = zq3_dns_resolve(zctx, (struct sockaddr_storage *)mctx->broker);
+	if (err) {
+		return err;
+	}
+
+	err = mqtt_connect(mctx);
 	if(err) {
 		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
 		switch(-err) {
