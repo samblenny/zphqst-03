@@ -20,7 +20,6 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/display.h>  /* display_blanking_off() */
-#include <zephyr/net/socket.h>
 #include <zephyr/net/mqtt.h>
 #include <zephyr/net/wifi_mgmt.h>  /* NET_EVENT_WIFI_CONNECT_RESULT, etc */
 #include <zephyr/shell/shell.h>
