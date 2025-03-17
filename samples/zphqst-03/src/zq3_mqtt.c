@@ -24,7 +24,7 @@
 // Once MQTT connection is up, event loop calls this to start subscription.
 // This is hardcoded to subscribe to the one topic specified in zq3_context.
 //
-int zq3_register_sub(zq3_context *zctx, struct mqtt_client *mctx) {
+int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx) {
 	if (zctx->state < CONNACK) {
 		printk("ERR: can't subscribe, mqtt not connected.\n");
 		return 1;
@@ -65,8 +65,16 @@ int zq3_register_sub(zq3_context *zctx, struct mqtt_client *mctx) {
 // Publish to the topic's /get topic modifier in the styel used by AdafruitIO.
 // This mechanism is an alternative to the normal MQTT retain feature.
 //
-int zq3_publish_get() {
+int zq3_mqtt_publish_get(struct mqtt_client *mctx) {
 	// TODO: implement this
+	printk("TODO: IMPLEMENT PUBLISH GET\n");
+	return 0;
+}
+
+// Publish new toggle switch state to the topic
+int zq3_mqtt_publish(struct mqtt_client *mctx, bool toggle) {
+	// TODO: implement this
+	printk("TODO: IMPLEMENT PUBLISH\n");
 	return 0;
 }
 

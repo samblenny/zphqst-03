@@ -8,9 +8,11 @@
 #include <zephyr/net/mqtt.h>  /* struct mqtt_client */
 #include "zq3.h"              /* zq3_context */
 
-int zq3_register_sub(zq3_context *zctx, struct mqtt_client *mctx);
+int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx);
 
-int zq3_publish_get();
+int zq3_mqtt_publish_get(struct mqtt_client *mctx);
+
+int zq3_mqtt_publish(struct mqtt_client *mctx, bool toggle);
 
 int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx);
 

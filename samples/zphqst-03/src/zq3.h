@@ -7,7 +7,8 @@
 
 #include <zephyr/net/socket.h>  /* pollfd */
 
-// Sequence of connection states from no connectivity up to mqtt ready to go.
+
+// Sequence of connection states from no-connectivity up to mqtt-ready-to-go.
 typedef enum {
 	MQTT_DOWN, // disconnected from broker, but not in an error state
 	MQTT_ERR,  // waiting for error recovery (something went wrong)
@@ -17,6 +18,13 @@ typedef enum {
 	SUBACK,    // publish to /get topic modifier
 	READY,     // task: respond to button pushes or publish events
 } zq3_state;
+
+// Possible states for local cached value of an MQTT toggle switch topic
+typedef enum {
+	UNKNOWN,  // toggle state unknown (because no MQTT connection yet, etc)
+	OFF,      // toggle is off
+	ON,       // toggle is on
+} zq3_toggle;
 
 // AdafruitIO MQTT broker auth credentials, hostname, topic, and scheme
 typedef struct {
@@ -28,8 +36,8 @@ typedef struct {
 	bool valid;          // MQTT configuration is valid
 	zq3_state state;     // MQTT connection state (independent of wifi)
 	bool wifi_up;        // true when wifi connection is up
-	bool pub_got_0;
-	bool pub_got_1;
+	bool btn1_clicked;   // flag to tell event loop button 1 was clicked
+	zq3_toggle toggle;   // current state of toggle switch
 	// For the fds file descriptor array, the examples in Zephyr project MQTT
 	// docs use the pollfd type and the poll() function, both of which gave me
 	// compiler errors until I figured out I needed CONFIG_POSIX_API=y. Note

@@ -3,12 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * LVGL Docs & Refs:
- * https://docs.lvgl.io/master/details/integration/adding-lvgl-to-your-project/connecting_lvgl.html
  * https://docs.zephyrproject.org/apidoc/latest/group__clock__apis.html
- * https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/subsys/display/lvgl/src/main.c
  * https://docs.lvgl.io/9.2/overview/event.html#add-events-to-a-widget
  * https://docs.lvgl.io/9.2/porting/indev.html#keypad-or-keyboard
  * https://docs.lvgl.io/9.2/porting/timer_handler.html
+ * https://docs.lvgl.io/9.2/widgets/switch.html (toggle switch widget)
  * https://docs.lvgl.io/9.2/overview/display.html  (change bg color)
  * https://docs.lvgl.io/9.2/overview/color.html  (color constants)
  *
@@ -44,8 +43,8 @@ static zq3_context ZCtx = {
 	.valid = false,
 	.state = MQTT_DOWN,
 	.wifi_up = false,
-	.pub_got_0 = false,
-	.pub_got_1 = false,
+	.btn1_clicked = false,
+	.toggle = UNKNOWN,
 };
 
 struct sockaddr_storage AIOBroker;
@@ -78,6 +77,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
 		ZCtx.state = MQTT_DOWN;
+		ZCtx.toggle = UNKNOWN;   // because we're no longer subscribed
 		break;
 	case MQTT_EVT_PUBLISH:
 		// This happens when the broker informs us that somebody published a
@@ -114,11 +114,11 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 			switch((char)buf[0]) {
 			case '0':
 				printk("PUB GOT 0\n");
-				ZCtx.pub_got_0 = false;  // set flag for event loop
+				ZCtx.toggle = OFF;
 				break;
 			case '1':
 				printk("PUB GOT 1\n");
-				ZCtx.pub_got_1 = true;  // set flag for event loop
+				ZCtx.toggle = ON;
 				break;
 			default:
 				printk("unknown payload (buf[0] = 0x%02X)\n", buf[0]);
@@ -233,24 +233,6 @@ cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 	return 0;
 }
 
-static int cmd_pub(const struct shell *shell, size_t argc, char *argv[]) {
-	printk("cmd_pub\n"); // TODO: zap
-	// Avoid dereferencing null pointers if URL argument is missing
-	if (argc < 2 || argv == NULL || argv[1] == NULL) {
-		printk("ERROR: expected a message\n");
-		return 1;
-	}
-	// Avoid processing a string that is unterminated or too long. The point
-	// of this is to guard against weird edge cases that could cause strchr()
-	// to misbehave. If we pass this check, using strchr() should be fine.
-	const char *msg = argv[1];
-	if (!memchr(msg, '\0', ZQ3_MSG_MAX_LEN)) {
-		printk("ERROR: message too long (max: %d bytes)\n", ZQ3_MSG_MAX_LEN);
-		return 2;
-	}
-	return 0;
-}
-
 
 /*
 * EVENT CALLBACKS FOR LVGL AND NETWORKING
@@ -258,8 +240,8 @@ static int cmd_pub(const struct shell *shell, size_t argc, char *argv[]) {
 
 // Handle button events
 static void btn1_callback(lv_event_t *event) {
-	// TODO: trigger MQTT to AdafruitIO
-	printk("button clicked\n");
+	printk("button clicked, \n");
+	ZCtx.btn1_clicked = true;
 }
 
 // Hhandle network manager events (wifi up / wifi down)
@@ -296,9 +278,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
 		"conf mqtts://Blinka:aio_1234@io.adafruit.com/Blinka/f/test",
 		cmd_conf, 2, 0),
 	SHELL_CMD(connect, NULL, "Connect to broker", cmd_connect),
-	SHELL_CMD_ARG(pub, NULL, "Publish message to the topic\n"
-		"Usage: pub <message>",
-		cmd_pub, 2, 0),
 	SHELL_CMD(disconnect, NULL, "Disconnect from broker", cmd_disconnect),
 	SHELL_SUBCMD_SET_END
 );
@@ -358,20 +337,24 @@ int main(void) {
 	lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -10, 5);
 	lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
 
-	// Make Button 1 (gets added to kepad group later)
-	lv_obj_t *btn1 = lv_button_create(lv_screen_active());
-	lv_obj_align(btn1, LV_ALIGN_CENTER, 0, 0);
-	lv_obj_add_event_cb(btn1, btn1_callback, LV_EVENT_PRESSED, NULL);
-	lv_obj_t *label = lv_label_create(btn1);
-	lv_label_set_text(label, "Button 1");
+	// Make toggle switch widget (gets added to keypad group later)
+	lv_obj_t *toggle = lv_switch_create(lv_screen_active());
+	lv_obj_add_event_cb(toggle, btn1_callback, LV_EVENT_PRESSED, NULL);
+	lv_obj_set_size(toggle, 120, 60);
+	lv_obj_center(toggle);
 
-	// Configure a group so keypad can control focus and button pressing.
+	// Configure a group so keypad can control focus and input for widgets.
 	// This expects that the devicetree config has provided a keypad with
 	// pysical buttons mapped to navigation keys such as LV_KEY_LEFT,
 	// LV_KEY_RIGHT, and LV_KEY_ENTER. Minimum is LV_KEY_ENTER.
 	lv_group_t *grp = lv_group_create();
-	lv_group_add_obj(grp, btn1);
+	lv_group_add_obj(grp, toggle);
 	lv_indev_set_group(lvgl_input_get_indev(keypad), grp);
+
+	// Start with toggle disabled (gets enabled once mqtt connection is up)
+	// CAUTION! Widget must be added to keypad input group *before* setting it
+	// as disabled. Otherwise, re-enabling the widget later won't work.
+	lv_obj_add_state(toggle, LV_STATE_DISABLED);
 
 	// Register to get updates about wifi connection status
 	net_mgmt_init_event_callback(&net_status, net_callback,
@@ -381,6 +364,7 @@ int main(void) {
 	// Event loop
 	bool prev_wifi_up = false;
 	zq3_state prev_state = ZCtx.state;
+	zq3_toggle prev_toggle = ZCtx.toggle;
 	lv_timer_handler();
 	display_blanking_off(display);
 	while(1) {
@@ -391,26 +375,34 @@ int main(void) {
 			ZCtx.state = MQTT_DOWN;
 		}
 
-		// Update the LVGL user interface status line
+		// Update the LVGL user interface status line (wifi status, etc)
 		if (prev_wifi_up != ZCtx.wifi_up) {
 			// Show wifi icon or warning icon depending on wifi status
 			if (ZCtx.wifi_up) {
+				// WIFI UP
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
 			} else {
+				// WIFI DOWN
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WARNING);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
+				lv_obj_add_state(toggle, LV_STATE_DISABLED);
 			}
 			prev_wifi_up = ZCtx.wifi_up;
 		}
-		if (prev_state != ZCtx.state) {
+		if (ZCtx.wifi_up && (prev_state != ZCtx.state)) {
 			// Add an "M" next to the wifi symbol if MQTT is in READY state
+			// Also, adjust enable/disable status of toggle switch
 			prev_state = ZCtx.state;
-			if (ZCtx.wifi_up && (ZCtx.state == READY)) {
+			if (ZCtx.state == READY) {
+				// WIFI UP + MQTT UP
 				lv_label_set_text(wifiLabel, "M " LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
+				lv_obj_clear_state(toggle, LV_STATE_DISABLED);
 			} else {
+				// WIFI UP + MQTT DOWN
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
+				lv_obj_add_state(toggle, LV_STATE_DISABLED);
 			}
 		}
 
@@ -435,7 +427,7 @@ int main(void) {
 			switch(ZCtx.state) {
 			case CONNACK:
 				// Subscribe to topic as soon as MQTT connection is up
-				err = zq3_register_sub(&ZCtx, &Ctx);
+				err = zq3_mqtt_subscribe(&ZCtx, &Ctx);
 				if (err) {
 					printk("[MQTT_ERR]\n");
 					ZCtx.state = MQTT_ERR;
@@ -448,7 +440,7 @@ int main(void) {
 				// Publish to the topic's /get topic modifier as soon as the
 				// subscription has been ACK'd. This is meant to work with
 				// AdafruitIO which does not support normal MQTT retain.
-				err = zq3_publish_get();
+				err = zq3_mqtt_publish_get(&Ctx);
 				if (err) {
 					printk("[MQTT_ERR]\n");
 					ZCtx.state = MQTT_ERR;
@@ -460,16 +452,32 @@ int main(void) {
 			default:
 				/* NOP */
 			}
+		}
 
-			if (ZCtx.pub_got_0) {
-				// TODO: update GUI switch = off
-				ZCtx.pub_got_0 = false;
+		// Update toggle button widget (did an mqtt message change its state?)
+		if (prev_toggle != ZCtx.toggle) {
+			switch(ZCtx.toggle) {
+			case OFF:
+				printk("MQTT toggle OFF\n");
+				lv_obj_clear_state(toggle, LV_STATE_CHECKED);
+				break;
+			case ON:
+				printk("MQTT toggle ON\n");
+				lv_obj_add_state(toggle, LV_STATE_CHECKED);
+				break;
+			default:
+				/* NOP */
 			}
+			prev_toggle = ZCtx.toggle;
+		}
 
-			if (ZCtx.pub_got_1) {
-				// TODO: update GUI switch = on
-				ZCtx.pub_got_1 = false;
-			}
+		// Respond button click callback (do we need to publish a message?)
+		if (ZCtx.btn1_clicked) {
+			ZCtx.btn1_clicked = false;
+			// Check widget's current state, then publish it on MQTT
+			bool state = lv_obj_has_state(toggle, LV_STATE_CHECKED);
+			printk("BUTTON toggle %s\n", state ? "ON" : "OFF");
+			zq3_mqtt_publish(&Ctx, state);
 		}
 
 		// Call LVGL then sleep until time for the next tick
