@@ -16,18 +16,6 @@
  * https://docs.zephyrproject.org/latest/doxygen/html/group__net__mgmt.html
  * https://docs.zephyrproject.org/latest/doxygen/html/structnet__mgmt__event__callback.html
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/subsys/net/l2/wifi/wifi_shell.c
- *
- * AIO + MQTT Docs & Refs:
- * https://io.adafruit.com/api/docs/mqtt.html#adafruit-io-mqtt-api
- * https://docs.zephyrproject.org/latest/connectivity/networking/api/mqtt.html
- * https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__evt.html
- * https://docs.zephyrproject.org/latest/doxygen/html/group__mqtt__socket.html
- * https://docs.zephyrproject.org/apidoc/latest/structsockaddr.html
- * https://docs.zephyrproject.org/latest/connectivity/networking/api/sockets.html#secure-sockets-interface
- * https://github.com/zephyrproject-rtos/zephyr/blob/main/include/zephyr/net/socket.h
- *
- * AdafruitIO MQTT Settings:
- * host:port: io.adafruit.com:8883
  */
 
 #include <zephyr/kernel.h>
