@@ -222,7 +222,7 @@ static void pressed_callback(lv_event_t *event) {
 	ZCtx.btn1_clicked = true;
 }
 
-// Hhandle network manager events (wifi up / wifi down)
+// Handle network manager events (wifi up / wifi down)
 static void net_callback(struct net_mgmt_event_callback *cb,
 	uint32_t mgmt_event, struct net_if *iface)
 {
@@ -243,7 +243,7 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 */
 
 // These macros add the `aio *` shell commands for configuring and testing the
-// MQTT broker in the Zephyr shell over usb serial.  Combined with the `wifi
+// MQTT broker in the Zephyr shell over USB serial.  Combined with the `wifi
 // connect` shell command, this makes it unnecessary to hardcode network
 // authentication secrets.
 //
@@ -337,18 +337,17 @@ int main(void) {
 	lv_obj_center(waiting);
 
 	// Make toggle switch widget (gets added to keypad group later)
-	// CAUTION! Adding a physical button press listener to this widget would
-	// make the implementation a lot more confusing. It's better to put the
-	// listener on the screen and let the main event loop track the MQTT topic
-	// state independently of the toggle widget state.
 	lv_obj_t *toggle = lv_switch_create(lv_screen_active());
 	lv_obj_set_size(toggle, 120, 60);
 	lv_obj_center(toggle);
 
-	// Set up input group so keypad press events go to the active screen.
-	// This expects that the devicetree config has provided a keypad with
-	// pysical buttons mapped to navigation keys such as LV_KEY_LEFT,
-	// LV_KEY_RIGHT, and LV_KEY_ENTER. Minimum is LV_KEY_ENTER.
+	// Set up input group so keypad press events go to the active screen. This
+	// arrangement (vs. putting pressed event on the switch) lets the main
+	// event loop consider both keypad presses and received MQTT messages to
+	// decide what the toggle switch's CHECKED state should be. For this to
+	// work, the devicetree config must provide a keypad with physical buttons
+	// mapped to navigation keys such as LV_KEY_LEFT, LV_KEY_RIGHT, and
+	// LV_KEY_ENTER. Minimum is LV_KEY_ENTER.
 	lv_obj_t *screen = lv_screen_active();
 	lv_group_t *grp = lv_group_create();
 	lv_group_add_obj(grp, screen);
@@ -451,7 +450,7 @@ int main(void) {
 			}
 		}
 
-		// Respond keypad press callback (do we need to PUBLISH a message?)
+		// Respond to keypad press callback (do we need to PUBLISH a message?)
 		// CAUTION! This needs to happen before the check to update the toggle
 		// switch widget.
 		if (ZCtx.btn1_clicked && ZCtx.state == READY) {
@@ -463,7 +462,7 @@ int main(void) {
 			zq3_mqtt_publish(&ZCtx, &Ctx, state);
 		} else if (ZCtx.btn1_clicked && ZCtx.state != READY) {
 			ZCtx.btn1_clicked = false;
-			printk("Keypad pressed but MQTT stte is not READY\n");
+			printk("Keypad pressed but MQTT connection is not READY\n");
 		}
 
 		// Check if MQTT message requested a change to the toggle state
@@ -484,11 +483,9 @@ int main(void) {
 				/* NOP */
 				break;
 			case OFF:
-				printk("MQTT toggle to 0\n");
 				lv_obj_clear_state(toggle, LV_STATE_CHECKED);
 				break;
 			case ON:
-				printk("MQTT toggle to 1\n");
 				lv_obj_add_state(toggle, LV_STATE_CHECKED);
 				break;
 			}
