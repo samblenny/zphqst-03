@@ -23,6 +23,10 @@
 
 // Once MQTT connection is up, event loop calls this to start subscription.
 // This is hardcoded to subscribe to the one topic specified in zq3_context.
+// Related docs:
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__subscription__list.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__topic.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__utf8.html
 //
 int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx) {
 	if (zctx->state < CONNACK) {
@@ -30,11 +34,7 @@ int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx) {
 		return 1;
 	}
 	// This is using a C99 feature called a compound literals to initialize a
-	// nested struct. Related docs:
-	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__subscription__list.html
-	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__topic.html
-	// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__utf8.html
-	//
+	// nested struct.
 	struct mqtt_topic topic = {
 		.topic = (struct mqtt_utf8){
 			.utf8 = (uint8_t *)zctx->topic,
@@ -65,17 +65,53 @@ int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx) {
 // Publish to the topic's /get topic modifier in the styel used by AdafruitIO.
 // This mechanism is an alternative to the normal MQTT retain feature.
 //
-int zq3_mqtt_publish_get(struct mqtt_client *mctx) {
+int zq3_mqtt_publish_get(zq3_context *zctx, struct mqtt_client *mctx) {
 	// TODO: implement this
 	printk("TODO: IMPLEMENT PUBLISH GET\n");
 	return 0;
 }
 
-// Publish new toggle switch state to the topic
-int zq3_mqtt_publish(struct mqtt_client *mctx, bool toggle) {
-	// TODO: implement this
-	printk("TODO: IMPLEMENT PUBLISH\n");
-	return 0;
+// Publish new toggle switch state to the topic.
+// Related docs:
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__publish__param.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__publish__message.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__topic.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__utf8.html
+// - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__binstr.html
+//
+int
+zq3_mqtt_publish(zq3_context *zctx, struct mqtt_client *mctx, bool toggle)
+{
+	char * state = toggle ? "1" : "0";
+	printk("Publishing toggle state = %s\n", state);
+	// Build a C99 compound literal representing the message to be published
+	const struct mqtt_publish_param param = {
+		.message = (struct mqtt_publish_message){
+			.topic = (struct mqtt_topic){
+				.topic = (struct mqtt_utf8){
+					.utf8 = (uint8_t *)zctx->topic,
+					.size = strlen(zctx->topic),
+				},
+				.qos = MQTT_QOS_0_AT_MOST_ONCE,
+			},
+			.payload = (struct mqtt_binstr){
+				.data = (uint8_t *)state,
+				.len = strlen(state),
+			},
+		},
+		.message_id = 0,
+		.dup_flag = 0,
+		.retain_flag = 0,
+	};
+	// Publish it
+	int err = mqtt_publish(mctx, &param);
+	if (err) {
+		switch(err) {
+		default:
+			printk("ERR: mqtt_publish() = %d\n", err);
+		}
+	}
+	return err;
 }
 
 

@@ -37,6 +37,8 @@ typedef struct {
 	zq3_state state;     // MQTT connection state (independent of wifi)
 	bool wifi_up;        // true when wifi connection is up
 	bool btn1_clicked;   // flag to tell event loop button 1 was clicked
+	bool got_0;          // flag for receiving MQTT PUBLISH message "0"
+	bool got_1;          // flag for receiving MQTT PUBLISH message "1"
 	zq3_toggle toggle;   // current state of toggle switch
 	// For the fds file descriptor array, the examples in Zephyr project MQTT
 	// docs use the pollfd type and the poll() function, both of which gave me

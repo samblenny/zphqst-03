@@ -44,6 +44,8 @@ static zq3_context ZCtx = {
 	.state = MQTT_DOWN,
 	.wifi_up = false,
 	.btn1_clicked = false,
+	.got_0 = false,
+	.got_1 = false,
 	.toggle = UNKNOWN,
 };
 
@@ -100,52 +102,28 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		uint8_t buf[32] = {0};
 		uint32_t payload_len = m->payload.len;
 		int count = mqtt_read_publish_payload(&Ctx, buf, sizeof(buf));
-		if (count < 0) {
-			printk("ERR: mqtt_read_publish_payload() = %d\n", count);
+		if (count != 1 || count != payload_len) {
+			printk("ERR: unexpected payload length: %d\n", count);
 			return;
 		}
-		if (count < payload_len) {
-			printk("ERR: payload truncated %d of %d\n", count, payload_len);
-			return;
+		// Parse payload data for expected messages: "1" or "0"
+		switch((char)buf[0]) {
+		case '0':
+			printk("PUB GOT 0\n");
+			ZCtx.got_0 = true;
+			break;
+		case '1':
+			printk("PUB GOT 1\n");
+			ZCtx.got_1 = true;
+			break;
+		default:
+			printk("PUB GOT unknown value\n");
 		}
-		// Finally, parse payload data for expected messages: "1" or "0"
-		if (payload_len == 1){
-			printk("H len: %d\n", payload_len);
-			switch((char)buf[0]) {
-			case '0':
-				printk("PUB GOT 0\n");
-				ZCtx.toggle = OFF;
-				break;
-			case '1':
-				printk("PUB GOT 1\n");
-				ZCtx.toggle = ON;
-				break;
-			default:
-				printk("unknown payload (buf[0] = 0x%02X)\n", buf[0]);
-			}
-		} else {
-			printk("unknown payload (len = %d)\n", payload_len);
-		}
-		break;
-	case MQTT_EVT_PUBACK:
-		printk("PUBACK\n");
-		break;
-	case MQTT_EVT_PUBREC:
-		printk("PUBREC\n");
-		break;
-	case MQTT_EVT_PUBREL:
-		printk("PUBREL\n");
-		break;
-	case MQTT_EVT_PUBCOMP:
-		printk("PUBCOMP\n");
 		break;
 	case MQTT_EVT_SUBACK:
 		printk("SUBACK\n");
 		// Update state telling event loop to publish to /get topic modifier
 		ZCtx.state = SUBACK;
-		break;
-	case MQTT_EVT_UNSUBACK:
-		printk("UNSUBACK\n");
 		break;
 	case MQTT_EVT_PINGRESP:
 		printk("PINGRESP\n");
@@ -238,9 +216,9 @@ cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 * EVENT CALLBACKS FOR LVGL AND NETWORKING
 */
 
-// Handle button events
-static void btn1_callback(lv_event_t *event) {
-	printk("button clicked, \n");
+// Callback to handle keypad input events
+static void pressed_callback(lv_event_t *event) {
+	printk("KEYPAD CALLBACK\n");
 	ZCtx.btn1_clicked = true;
 }
 
@@ -359,18 +337,23 @@ int main(void) {
 	lv_obj_center(waiting);
 
 	// Make toggle switch widget (gets added to keypad group later)
+	// CAUTION! Adding a physical button press listener to this widget would
+	// make the implementation a lot more confusing. It's better to put the
+	// listener on the screen and let the main event loop track the MQTT topic
+	// state independently of the toggle widget state.
 	lv_obj_t *toggle = lv_switch_create(lv_screen_active());
-	lv_obj_add_event_cb(toggle, btn1_callback, LV_EVENT_PRESSED, NULL);
 	lv_obj_set_size(toggle, 120, 60);
 	lv_obj_center(toggle);
 
-	// Configure a group so keypad can control focus and input for widgets.
+	// Set up input group so keypad press events go to the active screen.
 	// This expects that the devicetree config has provided a keypad with
 	// pysical buttons mapped to navigation keys such as LV_KEY_LEFT,
 	// LV_KEY_RIGHT, and LV_KEY_ENTER. Minimum is LV_KEY_ENTER.
+	lv_obj_t *screen = lv_screen_active();
 	lv_group_t *grp = lv_group_create();
-	lv_group_add_obj(grp, toggle);
+	lv_group_add_obj(grp, screen);
 	lv_indev_set_group(lvgl_input_get_indev(keypad), grp);
+	lv_obj_add_event_cb(screen, pressed_callback, LV_EVENT_PRESSED, NULL);
 
 	// Start with toggle hidden and disabled (until mqtt connection is up)
 	// CAUTION! Widget must be added to keypad input group *before* setting it
@@ -454,7 +437,7 @@ int main(void) {
 				// Publish to the topic's /get topic modifier as soon as the
 				// subscription has been ACK'd. This is meant to work with
 				// AdafruitIO which does not support normal MQTT retain.
-				err = zq3_mqtt_publish_get(&Ctx);
+				err = zq3_mqtt_publish_get(&ZCtx, &Ctx);
 				if (err) {
 					printk("[MQTT_ERR]\n");
 					ZCtx.state = MQTT_ERR;
@@ -468,31 +451,47 @@ int main(void) {
 			}
 		}
 
-		// Update toggle button widget (did an mqtt message change its state?)
+		// Respond keypad press callback (do we need to PUBLISH a message?)
+		// CAUTION! This needs to happen before the check to update the toggle
+		// switch widget.
+		if (ZCtx.btn1_clicked && ZCtx.state == READY) {
+			ZCtx.btn1_clicked = false;
+			// This evaluates to true when .toggle is UNKNOWN or OFF
+			bool state = ZCtx.toggle != ON;
+			ZCtx.toggle = state ? ON : OFF;
+			printk("KEYPRESS: publishing toggle = %d\n", state ? 1 : 0);
+			zq3_mqtt_publish(&ZCtx, &Ctx, state);
+		} else if (ZCtx.btn1_clicked && ZCtx.state != READY) {
+			ZCtx.btn1_clicked = false;
+			printk("Keypad pressed but MQTT stte is not READY\n");
+		}
+
+		// Check if MQTT message requested a change to the toggle state
+		if (ZCtx.got_0) {
+			ZCtx.got_0 = false;
+			ZCtx.toggle = OFF;
+		}
+		if (ZCtx.got_1) {
+			ZCtx.got_1 = false;
+			ZCtx.toggle = ON;
+		}
+
+		// Update toggle button widget if toggle stated has changed
 		if (prev_toggle != ZCtx.toggle) {
+			prev_toggle = ZCtx.toggle;
 			switch(ZCtx.toggle) {
 			case UNKNOWN:
 				/* NOP */
 				break;
 			case OFF:
-				printk("MQTT toggle OFF\n");
+				printk("MQTT toggle to 0\n");
 				lv_obj_clear_state(toggle, LV_STATE_CHECKED);
 				break;
 			case ON:
-				printk("MQTT toggle ON\n");
+				printk("MQTT toggle to 1\n");
 				lv_obj_add_state(toggle, LV_STATE_CHECKED);
 				break;
 			}
-			prev_toggle = ZCtx.toggle;
-		}
-
-		// Respond button click callback (do we need to publish a message?)
-		if (ZCtx.btn1_clicked) {
-			ZCtx.btn1_clicked = false;
-			// Check widget's current state, then publish it on MQTT
-			bool state = lv_obj_has_state(toggle, LV_STATE_CHECKED);
-			printk("BUTTON toggle %s\n", state ? "ON" : "OFF");
-			zq3_mqtt_publish(&Ctx, state);
 		}
 
 		// Call LVGL then sleep until time for the next tick
