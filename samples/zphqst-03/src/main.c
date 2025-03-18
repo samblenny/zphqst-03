@@ -284,6 +284,21 @@ SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
 
 
 /*
+* LVGL UTIL FUNCTIONS
+*/
+
+static void hide_lv_widget(lv_obj_t *obj) {
+	lv_obj_add_state(obj, LV_STATE_DISABLED);
+	lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void show_lv_widget(lv_obj_t *obj) {
+	lv_obj_clear_state(obj, LV_STATE_DISABLED);
+	lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+
+/*
 * MAIN
 */
 
@@ -333,9 +348,15 @@ int main(void) {
 	// Make wifi status label
 	lv_obj_t *wifiLabel = lv_label_create(lv_screen_active());
 	lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
-	lv_label_set_text(wifiLabel, LV_SYMBOL_WARNING);
 	lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -10, 5);
 	lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
+
+	// Make "Waiting for MQTT Connect" label
+	lv_obj_t *waiting = lv_label_create(lv_screen_active());
+	lv_label_set_text(waiting, "Waiting for\nMQTT Connect\n(check shell)");
+	lv_obj_set_style_text_align(waiting, LV_TEXT_ALIGN_CENTER, 0);
+	lv_obj_set_style_text_color(waiting, wifiColorUp, 0);
+	lv_obj_center(waiting);
 
 	// Make toggle switch widget (gets added to keypad group later)
 	lv_obj_t *toggle = lv_switch_create(lv_screen_active());
@@ -351,10 +372,10 @@ int main(void) {
 	lv_group_add_obj(grp, toggle);
 	lv_indev_set_group(lvgl_input_get_indev(keypad), grp);
 
-	// Start with toggle disabled (gets enabled once mqtt connection is up)
+	// Start with toggle hidden and disabled (until mqtt connection is up)
 	// CAUTION! Widget must be added to keypad input group *before* setting it
 	// as disabled. Otherwise, re-enabling the widget later won't work.
-	lv_obj_add_state(toggle, LV_STATE_DISABLED);
+	hide_lv_widget(toggle);
 
 	// Register to get updates about wifi connection status
 	net_mgmt_init_event_callback(&net_status, net_callback,
@@ -384,9 +405,10 @@ int main(void) {
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
 			} else {
 				// WIFI DOWN
-				lv_label_set_text(wifiLabel, LV_SYMBOL_WARNING);
+				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
-				lv_obj_add_state(toggle, LV_STATE_DISABLED);
+				hide_lv_widget(toggle);
+				show_lv_widget(waiting);
 			}
 			prev_wifi_up = ZCtx.wifi_up;
 		}
@@ -398,11 +420,14 @@ int main(void) {
 				// WIFI UP + MQTT UP
 				lv_label_set_text(wifiLabel, "M " LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
-				lv_obj_clear_state(toggle, LV_STATE_DISABLED);
+				hide_lv_widget(waiting);
+				show_lv_widget(toggle);
 			} else {
 				// WIFI UP + MQTT DOWN
 				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_add_state(toggle, LV_STATE_DISABLED);
+				hide_lv_widget(toggle);
+				show_lv_widget(waiting);
 			}
 		}
 
