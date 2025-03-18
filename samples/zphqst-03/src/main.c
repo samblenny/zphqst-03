@@ -396,42 +396,31 @@ int main(void) {
 			ZCtx.state = MQTT_DOWN;
 		}
 
-		// Update the LVGL user interface status line (wifi status, etc)
+		// Set status bar wifi icon color when wifi connection changes
 		if (prev_wifi_up != ZCtx.wifi_up) {
-			// Show wifi icon or warning icon depending on wifi status
 			if (ZCtx.wifi_up) {
-				// WIFI UP
-				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
 			} else {
-				// WIFI DOWN
-				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
 				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
 				hide_lv_widget(toggle);
 				show_lv_widget(waiting);
 			}
 			prev_wifi_up = ZCtx.wifi_up;
 		}
+
+		// Set toggle switch visibility when MQTT connection changes
 		if (ZCtx.wifi_up && (prev_state != ZCtx.state)) {
-			// Add an "M" next to the wifi symbol if MQTT is in READY state
-			// Also, adjust enable/disable status of toggle switch
 			prev_state = ZCtx.state;
 			if (ZCtx.state == READY) {
-				// WIFI UP + MQTT UP
-				lv_label_set_text(wifiLabel, "M " LV_SYMBOL_WIFI);
-				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
 				hide_lv_widget(waiting);
 				show_lv_widget(toggle);
 			} else {
-				// WIFI UP + MQTT DOWN
-				lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
-				lv_obj_add_state(toggle, LV_STATE_DISABLED);
 				hide_lv_widget(toggle);
 				show_lv_widget(waiting);
 			}
 		}
 
-		// Check on MQTT (note: poll() requires CONFIG_POSIX_API=y)
+		// Maintain MQTT connection (note: poll() requires CONFIG_POSIX_API=y)
 		if (ZCtx.state >= CONNWAIT) {
 			// Respond to incoming MQTT messages if needed
 			if (poll(ZCtx.fds, 1, 0) > 0) {
@@ -482,6 +471,9 @@ int main(void) {
 		// Update toggle button widget (did an mqtt message change its state?)
 		if (prev_toggle != ZCtx.toggle) {
 			switch(ZCtx.toggle) {
+			case UNKNOWN:
+				/* NOP */
+				break;
 			case OFF:
 				printk("MQTT toggle OFF\n");
 				lv_obj_clear_state(toggle, LV_STATE_CHECKED);
@@ -490,8 +482,6 @@ int main(void) {
 				printk("MQTT toggle ON\n");
 				lv_obj_add_state(toggle, LV_STATE_CHECKED);
 				break;
-			default:
-				/* NOP */
 			}
 			prev_toggle = ZCtx.toggle;
 		}
