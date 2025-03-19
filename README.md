@@ -91,27 +91,32 @@ uart:~$ wifi disconnect
 ```
 
 
-### Zephyr Button Sample
+## Saving Settings to Flash
 
-This runs zephyr/samples/basic/button:
+In the Zephyr shell, you can use the `settings` command to save the wifi SSID
+and password to flash, along with the AdafruitIO MQTT url. The settings API
+uses the NVM backend with the `storage` partition from Espressif's default
+partitions in `zephyr/dts/common/espressif/partitions_0x0_amp_4M.dtsi`.
 
-```
-(.venv) $ make clean && make button && make flash
-(.venv) $ make monitor
-```
-
-When you press the Boot button, this will turn on the red `#13` LED and print
-a message to the serial console.
-
-
-### Zephyr LVGL Demo
-
-This runs zephyr/samples/subsys/display/lvgl which has a white background with
-a "Hello World!" and a counter. Pressing `sw0` (the Boot button), resets the
-counter to 0.
+For example:
 
 ```
-(.venv) $ make clean && make lvgl && make flash
+uart:~$ settings write string wifi/ssid MySSID
+uart:~$ settings write string wifi/psk "my wifi passphrase"
+uart:~$ settings write string aio/url mqtts://USER:PASS@io.adafruit.com/USER/f/foo
+uart:~$ settings read wifi/ssid
+00000000: 4d 79 53 53 49 44 00                             |MySSID.          |
+uart:~$ settings read wifi/psk
+00000000: 6d 79 20 77 69 66 69 20  70 61 73 73 70 68 72 61 |my wifi  passphra|
+00000010: 73 65 00                                         |se.              |
+uart:~$ settings read aio/url
+00000000: 6d 71 74 74 73 3a 2f 2f  55 53 45 52 3a 50 41 53 |mqtts:// USER:PAS|
+00000010: 53 40 69 6f 2e 61 64 61  66 72 75 69 74 2e 63 6f |S@io.ada fruit.co|
+00000020: 6d 2f 55 53 45 52 2f 66  2f 66 6f 6f 00          |m/USER/f /foo.   |
+uart:~$ settings list
+aio/url
+wifi/psk
+wifi/ssid
 ```
 
 

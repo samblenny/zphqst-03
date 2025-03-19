@@ -21,6 +21,7 @@
 #include <zephyr/drivers/display.h>  /* display_blanking_off() */
 #include <zephyr/net/mqtt.h>
 #include <zephyr/net/wifi_mgmt.h>  /* NET_EVENT_WIFI_CONNECT_RESULT, etc */
+#include <zephyr/settings/settings.h>
 #include <zephyr/shell/shell.h>
 #include <lvgl.h>
 #include <lvgl_input_device.h>
@@ -289,6 +290,8 @@ int main(void) {
 	lv_init();
 	lv_tick_set_cb(k_uptime_get_32);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
+	settings_subsys_init();
+	settings_load();
 
 	// MQTT Init
 	mqtt_client_init(&Ctx);

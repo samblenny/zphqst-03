@@ -6,8 +6,6 @@
  *
  * Derived from zephyr/boards/espressif/esp32s3_devkitm
  * Modifications by Sam Blenny to work with Feather TFT ESP32-S3
- * For espressif soc dtsi files, see:
- *   https://github.com/zephyrproject-rtos/zephyr/tree/main/dts/xtensa/espressif/esp32s3
  */
 /dts-v1/;
 
@@ -20,6 +18,11 @@
 	model = "Adafruit Feather TFT ESP32-S3 PSRAM APPCPU";
 	compatible = "espressif,esp32s3";
 
+	/* For esp32s3 devicetree definitions provided by espressif, see:
+	*  - zephyr/dts/xtensa/espressif/esp32s3/esp32s3_mini_n4r2.dtsi
+	*  - zephyr/dts/xtensa/espressif/esp32s3/esp32s3_common.dtsi
+	*  - zephyr/dts/common/espressif/partitions_0x0_amp_4M.dtsi
+	*/
 	chosen {
 		zephyr,sram = &sram1;
 		zephyr,ipc_shm = &shm0;

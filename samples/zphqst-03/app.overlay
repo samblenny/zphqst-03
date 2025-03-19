@@ -1,0 +1,19 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2025 Sam Blenny
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * This configures a flash partition for use with the Settings API
+ *
+ * Related:
+ * - zephyr/dts/common/espressif/partitions_0x0_amp_4M.dtsi
+ */
+
+/ {
+	chosen {
+		zephyr,settings-partition = &storage_partition;
+	};
+};
+
+&storage_partition {
+	label = "settings";
+};
