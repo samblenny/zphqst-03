@@ -300,8 +300,8 @@ int main(void) {
 	Ctx.evt_cb = mq_handler;
 	Ctx.client_id.utf8 = (uint8_t *)"id";  // protocol requires non-empty id
 	Ctx.client_id.size = strlen("id");
-	Ctx.password = NULL; //&pass;
-	Ctx.user_name = NULL; //&user;
+	Ctx.password = &pass;
+	Ctx.user_name = &user;
 	Ctx.protocol_version = MQTT_VERSION_3_1_1;
 	Ctx.transport.type = MQTT_TRANSPORT_NON_SECURE;  // TODO: use TLS
 	Ctx.rx_buf = MQRxBuf;
