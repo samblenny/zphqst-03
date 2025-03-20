@@ -60,9 +60,8 @@ static struct mqtt_client Ctx;
 
 
 /*
-* MISC MQTT STUFF
+* NETWORK EVENT HANDLERS
 */
-
 
 // Handle MQTT events.
 // Related docs:
@@ -134,6 +133,23 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		break;
 	default:
 		break;
+	}
+}
+
+// Handle network manager events (wifi up / wifi down)
+static void net_callback(
+	struct net_mgmt_event_callback *cb,
+	uint32_t mgmt_event,
+	struct net_if *iface
+) {
+	if(mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
+		printk("[WIFI_UP]\n");
+		ZCtx.wifi_up = true;
+	} else if(mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
+		printk("[WIFI_DOWN]\n");
+		ZCtx.wifi_up = false;
+	} else {
+		printk("net: unknown event\n");
 	}
 }
 
@@ -212,7 +228,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
 
 
 /*
-* EVENT CALLBACKS FOR LVGL AND NETWORKING
+* LVGL UTIL FUNCTIONS
 */
 
 // Callback to handle keypad input events
@@ -220,31 +236,13 @@ static void pressed_callback(lv_event_t *event) {
 	ZCtx.btn1_clicked = true;
 }
 
-// Handle network manager events (wifi up / wifi down)
-static void net_callback(struct net_mgmt_event_callback *cb,
-	uint32_t mgmt_event, struct net_if *iface)
-{
-	if(mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
-		printk("[WIFI_UP]\n");
-		ZCtx.wifi_up = true;
-	} else if(mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
-		printk("[WIFI_DOWN]\n");
-		ZCtx.wifi_up = false;
-	} else {
-		printk("net: unknown event\n");
-	}
-}
-
-
-/*
-* LVGL UTIL FUNCTIONS
-*/
-
+// Hide a widget
 static void hide_lv_widget(lv_obj_t *obj) {
 	lv_obj_add_state(obj, LV_STATE_DISABLED);
 	lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Show a widget
 static void show_lv_widget(lv_obj_t *obj) {
 	lv_obj_clear_state(obj, LV_STATE_DISABLED);
 	lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
