@@ -28,12 +28,14 @@ typedef enum {
 
 // AdafruitIO MQTT broker auth credentials, hostname, topic, and scheme
 typedef struct {
+	char ssid[32];       // wifi ssid
+	char psk[64];        // wifi WPA2 passphrase
 	char user[48];       // MQTT username
 	char pass[48];       // MQTT password
 	char host[48];       // MQTT broker's hostname
 	char topic[48];      // MQTT topic
 	bool tls;            // MQTT should use TLS
-	bool valid;          // MQTT configuration is valid
+	bool mqtt_ok;        // MQTT configuration is valid (url parse worked)
 	zq3_state state;     // MQTT connection state (independent of wifi)
 	bool wifi_up;        // true when wifi connection is up
 	bool btn1_clicked;   // flag to tell event loop button 1 was clicked

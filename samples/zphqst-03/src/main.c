@@ -36,12 +36,14 @@
 
 // Context for wifi status, mqtt config, and mqtt status
 static zq3_context ZCtx = {
+	.ssid = {'\0'},
+	.psk =  {'\0'},
 	.user = {'\0'},
 	.pass = {'\0'},
 	.host = {'\0'},
 	.topic = {'\0'},
 	.tls = true,
-	.valid = false,
+	.mqtt_ok = false,
 	.state = MQTT_DOWN,
 	.wifi_up = false,
 	.btn1_clicked = false,
@@ -168,7 +170,7 @@ static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
 	}
 
 	// Success
-	ZCtx.valid = true;
+	ZCtx.mqtt_ok = true;
 	zq3_url_print_conf(&ZCtx);
 
 	// Update string lengths in MQTT context (see main() inits section)
@@ -278,6 +280,87 @@ static void show_lv_widget(lv_obj_t *obj) {
 
 
 /*
+* SETTINGS READING CALLBACKS
+* To write settings to flash, use the Zephyr shell `settings` command.
+* Docs:
+* - https://docs.zephyrproject.org/latest/services/storage/settings/index.html
+* - https://docs.zephyrproject.org/latest/doxygen/html/group__settings.html
+*/
+
+// This callback runs each time settings_load() reads a key from the NVM flash
+// backend which matches the configured prefix. The API docs confusingly refer
+// to this as "set" callback. The semantics seem like what I'd expect from a
+// getter. But, whatever. To read the saved values of keys, this works.
+//
+static int
+set_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
+{
+	char buf[256];
+	if (len >= sizeof(buf)) {
+		printk("setting value for key '%s' is too big: %d\n", key, len);
+		return -EMSGSIZE;
+	}
+	int rc = read_cb(cb_arg, buf, sizeof(buf));
+	if (rc < 0) {
+		printk("ERR: settings read_cb(%s) = %d\n", key, rc);
+		return rc;
+	}
+	buf[sizeof(buf)-1] = '\0';  // make sure string is null terminated
+	int vlen = strlen(buf);
+	if (strcmp("url", key) == 0) {
+		// Parse MQTT URL and save components to context struct
+		if (vlen >= ZQ3_URL_MAX_LEN) {
+			printk("ERR: setting for '%s' is too long: %d\n", key, vlen);
+			return -EOVERFLOW;
+		}
+		int err = zq3_url_parse(&ZCtx, buf);
+		if (err) {
+			printk("ERR settings: failed to parse url: %d\n", err);
+			return err;
+		}
+		// Success
+		ZCtx.mqtt_ok = true;
+		// Update string lengths in MQTT context (see main() inits section)
+		if(Ctx.password != NULL) {
+			Ctx.password->size = strlen(Ctx.password->utf8);
+		}
+		if(Ctx.user_name != NULL) {
+			Ctx.user_name->size = strlen(Ctx.user_name->utf8);
+		}
+	} else if (strcmp("ssid", key) == 0) {
+		// Save Wifi SSID to context struct
+		if (vlen >= sizeof(ZCtx.ssid)) {
+			printk("ERR: setting for '%s' is too long: %d\n", key, vlen);
+			return -EOVERFLOW;
+		}
+		memset(ZCtx.ssid, 0, sizeof(ZCtx.ssid));
+		memcpy(ZCtx.ssid, buf, vlen);
+	} else if (strcmp("psk", key) == 0) {
+		// Save Wifi passphrase to context struct
+		if (vlen >= sizeof(ZCtx.psk)) {
+			printk("ERR: setting for '%s' is too long: %d\n", key, vlen);
+			return -EOVERFLOW;
+		}
+		memset(ZCtx.psk, 0, sizeof(ZCtx.psk));
+		memcpy(ZCtx.psk, buf, vlen);
+	}
+	printk("Settings SET: '%s'\n", key);
+	return 0;
+}
+
+// This callback gets triggered by settings_load() when all saved values have
+// been read.
+static int commit_cb(void) {
+	printk("Settings COMMIT\n");
+	zq3_url_print_conf(&ZCtx);  // TODO: zap
+	return 0;
+}
+
+// This macro configures the callbacks to be invoked by settings_load()
+SETTINGS_STATIC_HANDLER_DEFINE(zq3, "zq3", NULL, set_cb, commit_cb, NULL);
+
+
+/*
 * MAIN
 */
 
@@ -287,10 +370,12 @@ int main(void) {
 	const struct device *keypad =
 		DEVICE_DT_GET(DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_lvgl_keypad_input));
 	struct net_mgmt_event_callback net_status;
+	int err;
 	lv_init();
 	lv_tick_set_cb(k_uptime_get_32);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
 	settings_subsys_init();
+	printk("Loading Settings\n");
 	settings_load();
 
 	// MQTT Init
@@ -422,7 +507,7 @@ int main(void) {
 			}
 
 			// Part of the state machine for bringing up full MQTT connection
-			int err = 0;
+			err = 0;
 			switch(ZCtx.state) {
 			case CONNACK:
 				// Subscribe to topic as soon as MQTT connection is up

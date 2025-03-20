@@ -117,12 +117,12 @@ zq3_mqtt_publish(zq3_context *zctx, struct mqtt_client *mctx, bool toggle)
 
 // Connect to MQTT broker
 int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx) {
-	if (!zctx->valid) {
-		printk("ERR: AIO is not configured (try 'aio conf ...')\n");
+	if (!zctx->mqtt_ok) {
+		printk("ERR: MQTT broker not configured\n");
 		return 1;
 	}
 	if (!zctx->wifi_up) {
-		printk("ERR: Wifi not connected (try `wifi connect ...`)\n");
+		printk("ERR: Wifi not connected\n");
 		return 2;
 	}
 	if (mctx->broker == NULL) {

@@ -10,14 +10,17 @@
 void zq3_url_print_conf(zq3_context *zctx) {
 	printk(
 		"MQTT Broker Config:\n"
-		"  user:  '%s'\n"
-		"  pass:  '%s'\n"
-		"  host:  '%s'\n"
-		"  topic: '%s'\n"
-		"  tls:   %s\n"
-		"  valid: %s\n",
+		"  ssid:   '%s'\n"
+		"  psk:    '%s'\n"
+		"  user:   '%s'\n"
+		"  pass:   '%s'\n"
+		"  host:   '%s'\n"
+		"  topic:  '%s'\n"
+		"  tls:     %s\n"
+		"  mqtt_ok: %s\n",
+		zctx->ssid, zctx->psk,
 		zctx->user, zctx->pass, zctx->host, zctx->topic,
-		zctx->tls ? "true" : "false", zctx->valid ? "true" : "false"
+		zctx->tls ? "true" : "false", zctx->mqtt_ok ? "true" : "false"
 	);
 }
 
@@ -27,13 +30,13 @@ void zq3_url_print_conf(zq3_context *zctx) {
 //   mqtt://:@192.168.0.50/test
 //
 int zq3_url_parse(zq3_context *zctx, const char *url) {
-	// Clear config struct and begin normal parsing
+	// Clear MQTT config fields and begin parsing
 	memset(zctx->user, 0, sizeof(zctx->user));
 	memset(zctx->pass, 0, sizeof(zctx->pass));
 	memset(zctx->host, 0, sizeof(zctx->host));
 	memset(zctx->topic, 0, sizeof(zctx->topic));
 	zctx->tls = false;
-	zctx->valid = false;
+	zctx->mqtt_ok = false;
 
 	const char *cursor = url;
 
