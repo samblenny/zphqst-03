@@ -139,10 +139,21 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 
 
 /*
-* AIO SHELL COMMANDS
+* SHELL COMMANDS
 */
 
-static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
+// Connect to Wifi
+static int cmd_wifi_up(const struct shell *shell, size_t argc, char *argv[]) {
+	return zq3_wifi_connect(ZCtx.ssid, ZCtx.psk);
+}
+
+// Disconnect from Wifi
+static int cmd_wifi_dn(const struct shell *shell, size_t argc, char *argv[]) {
+	return zq3_wifi_disconnect();
+}
+
+// Connect to MQTT broker
+static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
 	if (err) {
 		if (ZCtx.state >= CONNWAIT) {
@@ -156,9 +167,8 @@ static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 	return 0;
 }
 
-static int
-cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
-{
+// Disconnect from MQTT broker
+static int cmd_dn(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_disconnect(&Ctx);
 	if (err) {
 		if (ZCtx.state >= CONNWAIT) {
@@ -170,6 +180,21 @@ cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 	printk("[MQTT_DOWN]\n");
 	ZCtx.state = MQTT_DOWN;
 	return 0;
+}
+
+// Reload settings. (you can use this after `settings write ...`)
+static int cmd_reload(const struct shell *shell, size_t argc, char *argv[]) {
+	// Clear wifi and MQTT settings from context struct
+	memset(ZCtx.ssid, 0, sizeof(ZCtx.ssid));
+	memset(ZCtx.psk, 0, sizeof(ZCtx.psk));
+	memset(ZCtx.user, 0, sizeof(ZCtx.user));
+	memset(ZCtx.pass, 0, sizeof(ZCtx.pass));
+	memset(ZCtx.host, 0, sizeof(ZCtx.host));
+	memset(ZCtx.topic, 0, sizeof(ZCtx.topic));
+	ZCtx.tls = false;
+	ZCtx.mqtt_ok = false;
+	// Load saved settings
+	return settings_load();
 }
 
 
@@ -207,8 +232,11 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 // read from 'zq3/url' setting stored in NVM flash (`settings write ...`).
 //
 SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
-	SHELL_CMD(connect, NULL, "Connect to broker", cmd_connect),
-	SHELL_CMD(disconnect, NULL, "Disconnect from broker", cmd_disconnect),
+	SHELL_CMD(wifi_up, NULL, "Wifi connect", cmd_wifi_up),
+	SHELL_CMD(wifi_dn, NULL, "Wifi disconnect", cmd_wifi_dn),
+	SHELL_CMD(up, NULL, "AIO MQTT broker connect", cmd_up),
+	SHELL_CMD(dn, NULL, "AIO MQTT broker disconnect", cmd_dn),
+	SHELL_CMD(reload, NULL, "Reload settings", cmd_reload),
 	SHELL_SUBCMD_SET_END
 );
 
@@ -301,7 +329,6 @@ set_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
 // been read.
 static int commit_cb(void) {
 	printk("Settings COMMIT\n");
-	zq3_url_print_conf(&ZCtx);  // TODO: zap
 	return 0;
 }
 

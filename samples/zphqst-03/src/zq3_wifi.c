@@ -42,13 +42,13 @@ int zq3_wifi_connect(const char *ssid, const char *psk) {
 		.ssid_length = strlen(ssid),
 		.psk = psk,
 		.psk_length = strlen(psk),
-		.band = WIFI_FREQ_BAND_2_4_GHZ,
+		.band = WIFI_FREQ_BAND_2_4_GHZ,         // enum wifi_frequency_bands
 		.channel = WIFI_CHANNEL_ANY,
-		.security = WIFI_SECURITY_TYPE_PSK,  /* enum wifi_security_type */
+		.security = WIFI_SECURITY_TYPE_PSK,     // enum wifi_security_type
 		.mfp = WIFI_MFP_OPTIONAL,
 		.eap_ver = 1,
 		.ignore_broadcast_ssid = 0,
-		.bandwidth = WIFI_FREQ_BANDWIDTH_20MHZ,
+		.bandwidth = WIFI_FREQ_BANDWIDTH_20MHZ, // wifi_frequency_bandwidths
 		.verify_peer_cert = false,
 	};
 	struct net_if *i = net_if_get_wifi_sta();
@@ -63,6 +63,17 @@ int zq3_wifi_connect(const char *ssid, const char *psk) {
 
 // Disconnect from Wifi
 int zq3_wifi_disconnect() {
-	printk("TODO: DISCONNECT FROM WIFI\n");
-	return 0;
+	struct net_if *i = net_if_get_wifi_sta();
+	int err = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, i, NULL, 0);
+	switch (err) {
+	case 0:
+		printk("[Wifi DISCONNECT requested]\n");
+		return 0;
+	case -EALREADY:
+		printk("Wifi disconnect: already disconnected\n");
+		return 0;
+	default:
+		printk("ERR: Wifi disconnect: net_mgmt() = %d\n", err);
+		return err;
+	}
 }
