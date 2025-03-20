@@ -197,6 +197,19 @@ static int cmd_reload(const struct shell *shell, size_t argc, char *argv[]) {
 	return settings_load();
 }
 
+// These macros add the `aio *` shell commands for controlling the MQTT broker
+// connection in the Zephyr shell over USB serial. MQTT broker config gets
+// read from 'zq3/url' setting stored in NVM flash (`settings write ...`).
+//
+SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
+	SHELL_CMD(wifi_up, NULL, "Wifi connect", cmd_wifi_up),
+	SHELL_CMD(wifi_dn, NULL, "Wifi disconnect", cmd_wifi_dn),
+	SHELL_CMD(up, NULL, "AIO MQTT broker connect", cmd_up),
+	SHELL_CMD(dn, NULL, "AIO MQTT broker disconnect", cmd_dn),
+	SHELL_CMD(reload, NULL, "Reload settings", cmd_reload),
+	SHELL_SUBCMD_SET_END
+);
+
 
 /*
 * EVENT CALLBACKS FOR LVGL AND NETWORKING
@@ -221,24 +234,6 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 		printk("net: unknown event\n");
 	}
 }
-
-
-/*
-* SHELL SUBCOMMAND ARRAY MACROS
-*/
-
-// These macros add the `aio *` shell commands for controlling the MQTT broker
-// connection in the Zephyr shell over USB serial. MQTT broker config gets
-// read from 'zq3/url' setting stored in NVM flash (`settings write ...`).
-//
-SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
-	SHELL_CMD(wifi_up, NULL, "Wifi connect", cmd_wifi_up),
-	SHELL_CMD(wifi_dn, NULL, "Wifi disconnect", cmd_wifi_dn),
-	SHELL_CMD(up, NULL, "AIO MQTT broker connect", cmd_up),
-	SHELL_CMD(dn, NULL, "AIO MQTT broker disconnect", cmd_dn),
-	SHELL_CMD(reload, NULL, "Reload settings", cmd_reload),
-	SHELL_SUBCMD_SET_END
-);
 
 
 /*
