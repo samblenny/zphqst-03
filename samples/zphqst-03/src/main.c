@@ -2,15 +2,6 @@
  * SPDX-FileCopyrightText: Copyright 2025 Sam Blenny
  * SPDX-License-Identifier: Apache-2.0
  *
- * LVGL Docs & Refs:
- * https://docs.zephyrproject.org/apidoc/latest/group__clock__apis.html
- * https://docs.lvgl.io/9.2/overview/event.html#add-events-to-a-widget
- * https://docs.lvgl.io/9.2/porting/indev.html#keypad-or-keyboard
- * https://docs.lvgl.io/9.2/porting/timer_handler.html
- * https://docs.lvgl.io/9.2/widgets/switch.html (toggle switch widget)
- * https://docs.lvgl.io/9.2/overview/display.html  (change bg color)
- * https://docs.lvgl.io/9.2/overview/color.html  (color constants)
- *
  * Wifi + Network Manager Docs & Refs:
  * https://docs.zephyrproject.org/latest/doxygen/html/group__net__mgmt.html
  * https://docs.zephyrproject.org/latest/doxygen/html/structnet__mgmt__event__callback.html
@@ -18,15 +9,13 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/drivers/display.h>  /* display_blanking_off() */
 #include <zephyr/net/mqtt.h>
-#include <zephyr/net/wifi_mgmt.h>  /* NET_EVENT_WIFI_CONNECT_RESULT, etc */
+#include <zephyr/net/wifi_mgmt.h>     // NET_EVENT_WIFI_CONNECT_RESULT, ...
 #include <zephyr/settings/settings.h>
 #include <zephyr/shell/shell.h>
-#include <lvgl.h>
-#include <lvgl_input_device.h>
 #include "zq3.h"
 #include "zq3_mqtt.h"
+#include "zq3_lvgl.h"
 #include "zq3_url.h"
 #include "zq3_wifi.h"
 
@@ -226,28 +215,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
 
 
 /*
-* LVGL UTIL FUNCTIONS
-*/
-
-// Callback to handle keypad input events
-static void pressed_callback(lv_event_t *event) {
-	ZCtx.btn1_clicked = true;
-}
-
-// Hide a widget
-static void hide_lv_widget(lv_obj_t *obj) {
-	lv_obj_add_state(obj, LV_STATE_DISABLED);
-	lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-}
-
-// Show a widget
-static void show_lv_widget(lv_obj_t *obj) {
-	lv_obj_clear_state(obj, LV_STATE_DISABLED);
-	lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
-}
-
-
-/*
 * SETTINGS READING CALLBACKS
 * To write settings to flash, use the Zephyr shell `settings` command.
 * Docs:
@@ -328,18 +295,25 @@ SETTINGS_STATIC_HANDLER_DEFINE(zq3, "zq3", NULL, set_cb, commit_cb, NULL);
 
 
 /*
+* KEYPAD BUTTON PRESS CALLBACK
+*/
+
+// Callback to handle keypad input events
+static void keypad_pressed_callback(lv_event_t *event) {
+	ZCtx.btn1_clicked = true;
+}
+
+
+/*
 * MAIN
 */
 
 int main(void) {
 	// Inits
-	const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-	const struct device *keypad =
-		DEVICE_DT_GET(DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_lvgl_keypad_input));
 	struct net_mgmt_event_callback net_status;
 	int err;
-	lv_init();
-	lv_tick_set_cb(k_uptime_get_32);
+	zq3_lvgl_context LCtx;
+	zq3_lvgl_init(&LCtx, keypad_pressed_callback);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
 	settings_subsys_init();
 	printk("Loading Settings\n");
@@ -369,51 +343,6 @@ int main(void) {
 	// conf->cipher_list = NULL;
 	// conf->hostname = MQTT_BROKER_HOSTNAME;
 
-	// Colors
-	lv_color_t bgColor = lv_palette_darken(LV_PALETTE_GREY, 4);
-	lv_color_t wifiColorDown = lv_palette_darken(LV_PALETTE_GREY, 3);
-	lv_color_t wifiColorUp = lv_palette_main(LV_PALETTE_GREEN);
-
-	// Change background color (see also lv_palette_main())
-	lv_obj_t *scr = lv_screen_active();
-	lv_obj_set_style_bg_color(scr, bgColor, 0);
-
-	// Make wifi status label
-	lv_obj_t *wifiLabel = lv_label_create(lv_screen_active());
-	lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI);
-	lv_obj_align(wifiLabel, LV_ALIGN_TOP_RIGHT, -10, 5);
-	lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
-
-	// Make "Waiting for MQTT Connect" label
-	lv_obj_t *waiting = lv_label_create(lv_screen_active());
-	lv_label_set_text(waiting, "Waiting for\nMQTT Connect\n(check shell)");
-	lv_obj_set_style_text_align(waiting, LV_TEXT_ALIGN_CENTER, 0);
-	lv_obj_set_style_text_color(waiting, wifiColorUp, 0);
-	lv_obj_center(waiting);
-
-	// Make toggle switch widget (gets added to keypad group later)
-	lv_obj_t *toggle = lv_switch_create(lv_screen_active());
-	lv_obj_set_size(toggle, 120, 60);
-	lv_obj_center(toggle);
-
-	// Set up input group so keypad press events go to the active screen. This
-	// arrangement (vs. putting pressed event on the switch) lets the main
-	// event loop consider both keypad presses and received MQTT messages to
-	// decide what the toggle switch's CHECKED state should be. For this to
-	// work, the devicetree config must provide a keypad with physical buttons
-	// mapped to navigation keys such as LV_KEY_LEFT, LV_KEY_RIGHT, and
-	// LV_KEY_ENTER. Minimum is LV_KEY_ENTER.
-	lv_obj_t *screen = lv_screen_active();
-	lv_group_t *grp = lv_group_create();
-	lv_group_add_obj(grp, screen);
-	lv_indev_set_group(lvgl_input_get_indev(keypad), grp);
-	lv_obj_add_event_cb(screen, pressed_callback, LV_EVENT_PRESSED, NULL);
-
-	// Start with toggle hidden and disabled (until mqtt connection is up)
-	// CAUTION! Widget must be added to keypad input group *before* setting it
-	// as disabled. Otherwise, re-enabling the widget later won't work.
-	hide_lv_widget(toggle);
-
 	// Register to get updates about wifi connection status
 	net_mgmt_init_event_callback(&net_status, net_callback,
 		NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT);
@@ -423,8 +352,7 @@ int main(void) {
 	bool prev_wifi_up = false;
 	zq3_state prev_state = ZCtx.state;
 	zq3_toggle prev_toggle = ZCtx.toggle;
-	lv_timer_handler();
-	display_blanking_off(display);
+	zq3_lvgl_timer_handler();
 	while(1) {
 		// Update MQTT connection status if wifi connection went down
 		if ((ZCtx.state >= CONNWAIT) && !ZCtx.wifi_up) {
@@ -436,11 +364,10 @@ int main(void) {
 		// Set status bar wifi icon color when wifi connection changes
 		if (prev_wifi_up != ZCtx.wifi_up) {
 			if (ZCtx.wifi_up) {
-				lv_obj_set_style_text_color(wifiLabel, wifiColorUp, 0);
+				zq3_lvgl_wifi_status(&LCtx, true);
 			} else {
-				lv_obj_set_style_text_color(wifiLabel, wifiColorDown, 0);
-				hide_lv_widget(toggle);
-				show_lv_widget(waiting);
+				zq3_lvgl_wifi_status(&LCtx, false);
+				zq3_lvgl_show_message(&LCtx, "Wifi offline");
 			}
 			prev_wifi_up = ZCtx.wifi_up;
 		}
@@ -449,11 +376,9 @@ int main(void) {
 		if (ZCtx.wifi_up && (prev_state != ZCtx.state)) {
 			prev_state = ZCtx.state;
 			if (ZCtx.state == READY) {
-				hide_lv_widget(waiting);
-				show_lv_widget(toggle);
+				zq3_lvgl_show_toggle(&LCtx);
 			} else {
-				hide_lv_widget(toggle);
-				show_lv_widget(waiting);
+				zq3_lvgl_show_message(&LCtx, "MQTT is down");
 			}
 		}
 
@@ -480,9 +405,11 @@ int main(void) {
 				// Subscribe to topic as soon as MQTT connection is up
 				err = zq3_mqtt_subscribe(&ZCtx, &Ctx);
 				if (err) {
+					zq3_lvgl_show_message(&LCtx, "MQTT Error");
 					printk("[MQTT_ERR]\n");
 					ZCtx.state = MQTT_ERR;
 				} else {
+					zq3_lvgl_show_message(&LCtx, "MQTT CONNACK");
 					printk("[SUBWAIT]\n");
 					ZCtx.state = SUBWAIT;
 				}
@@ -493,9 +420,11 @@ int main(void) {
 				// AdafruitIO which does not support normal MQTT retain.
 				err = zq3_mqtt_publish_get(&ZCtx, &Ctx);
 				if (err) {
+					zq3_lvgl_show_message(&LCtx, "MQTT Error");
 					printk("[MQTT_ERR]\n");
 					ZCtx.state = MQTT_ERR;
 				} else {
+					zq3_lvgl_show_message(&LCtx, "MQTT SUBACK");
 					printk("[READY]\n");
 					ZCtx.state = READY;
 				}
@@ -518,9 +447,11 @@ int main(void) {
 		} else if (ZCtx.btn1_clicked && ZCtx.state != READY) {
 			ZCtx.btn1_clicked = false;
 			if (!ZCtx.wifi_up) {
+				zq3_lvgl_show_message(&LCtx, "Wifi Connecting...");
 				printk("starting wifi connection\n");
 				err = zq3_wifi_connect(ZCtx.ssid, ZCtx.psk);
 				if (err) {
+					zq3_lvgl_show_message(&LCtx, "Wifi Error");
 					printk("ERR: wifi connect: %d\n", err);
 				}
 			} else {
@@ -546,16 +477,16 @@ int main(void) {
 				/* NOP */
 				break;
 			case OFF:
-				lv_obj_clear_state(toggle, LV_STATE_CHECKED);
+				zq3_lvgl_set_toggle(&LCtx, false);
 				break;
 			case ON:
-				lv_obj_add_state(toggle, LV_STATE_CHECKED);
+				zq3_lvgl_set_toggle(&LCtx, true);
 				break;
 			}
 		}
 
 		// Call LVGL then sleep until time for the next tick
-		uint32_t holdoff_ms = lv_timer_handler();
+		uint32_t holdoff_ms = zq3_lvgl_timer_handler();
 		k_msleep(holdoff_ms);
 	}
 }

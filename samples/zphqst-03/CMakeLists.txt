@@ -6,8 +6,9 @@ find_package(Zephyr)
 project(zphqst_03)
 target_sources(app PRIVATE
 	src/main.c
-	src/zq3_mqtt.c
 	src/zq3_dns.c
+	src/zq3_mqtt.c
+	src/zq3_lvgl.c
 	src/zq3_url.c
 	src/zq3_wifi.c
 )
