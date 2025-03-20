@@ -155,6 +155,9 @@ int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx) {
 		default:
 			printk("ERR: %d\n", err);
 		}
+		if (zctx->state >= CONNWAIT) {
+			zctx->state = MQTT_ERR;
+		}
 		return err;
 	}
 	zctx->fds[0].fd = mctx->transport.tcp.sock;

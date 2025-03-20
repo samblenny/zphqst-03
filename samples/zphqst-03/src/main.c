@@ -145,6 +145,12 @@ static void net_callback(
 	if(mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		printk("[WIFI_UP]\n");
 		ZCtx.wifi_up = true;
+		// Attempt to connect to the MQTT broker (once)
+		int err = zq3_mqtt_connect(&ZCtx, &Ctx);
+		if (!err) {
+			printk("[CONWAIT]\n");
+			ZCtx.state = CONNWAIT;
+		}
 	} else if(mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
 		printk("[WIFI_DOWN]\n");
 		ZCtx.wifi_up = false;
@@ -172,10 +178,6 @@ static int cmd_wifi_dn(const struct shell *shell, size_t argc, char *argv[]) {
 static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
 	if (err) {
-		if (ZCtx.state >= CONNWAIT) {
-			printk("[MQTT_ERR]\n");
-			ZCtx.state = MQTT_ERR;
-		}
 		return err;
 	}
 	printk("[CONWAIT]\n");
@@ -187,10 +189,6 @@ static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
 static int cmd_dn(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_disconnect(&Ctx);
 	if (err) {
-		if (ZCtx.state >= CONNWAIT) {
-			printk("[MQTT_ERR]\n");
-			ZCtx.state = MQTT_ERR;
-		}
 		return err;
 	}
 	printk("[MQTT_DOWN]\n");
