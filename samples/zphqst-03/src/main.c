@@ -28,6 +28,7 @@
 #include "zq3.h"
 #include "zq3_mqtt.h"
 #include "zq3_url.h"
+#include "zq3_wifi.h"
 
 
 /*
@@ -141,49 +142,6 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 * AIO SHELL COMMANDS
 */
 
-
-// Handle the aio conf shell command by parsing and saving the URL.
-// Main point of this is to copy username, password, and host, and topic
-// strings into buffers that won't get deallocated before they are needed.
-//   usage: broker mqtt[s]://[<user>]:[<key>]@<host>/<topic>
-//
-static int cmd_conf(const struct shell *shell, size_t argc, char *argv[]) {
-	// Avoid dereferencing null pointers if URL argument is missing
-	if (argc < 2 || argv == NULL || argv[1] == NULL) {
-		printk("ERROR: expected a URL\n");
-		return 1;
-	}
-	// Avoid processing a string that is unterminated or too long. The point
-	// of this is to guard against weird edge cases that could cause strchr()
-	// to misbehave. If we pass this check, using strchr() should be fine.
-	const char *url = argv[1];
-	if (!memchr(url, '\0', ZQ3_URL_MAX_LEN)) {
-		printk("ERROR: URL is too long\n");
-		return 2;
-	}
-
-	// Parse the URL into fields of the ZCtx struct
-	int err = zq3_url_parse(&ZCtx, url);
-	if (err) {
-		printk("URL PARSE ERR: %d\n", err);
-		return err;
-	}
-
-	// Success
-	ZCtx.mqtt_ok = true;
-	zq3_url_print_conf(&ZCtx);
-
-	// Update string lengths in MQTT context (see main() inits section)
-	if(Ctx.password != NULL) {
-		Ctx.password->size = strlen(Ctx.password->utf8);
-	}
-	if(Ctx.user_name != NULL) {
-		Ctx.user_name->size = strlen(Ctx.user_name->utf8);
-	}
-
-	return 0;
-}
-
 static int cmd_connect(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
 	if (err) {
@@ -221,7 +179,6 @@ cmd_disconnect(const struct shell *shell, size_t argc, char *argv[])
 
 // Callback to handle keypad input events
 static void pressed_callback(lv_event_t *event) {
-	printk("KEYPAD CALLBACK\n");
 	ZCtx.btn1_clicked = true;
 }
 
@@ -245,19 +202,11 @@ static void net_callback(struct net_mgmt_event_callback *cb,
 * SHELL SUBCOMMAND ARRAY MACROS
 */
 
-// These macros add the `aio *` shell commands for configuring and testing the
-// MQTT broker in the Zephyr shell over USB serial.  Combined with the `wifi
-// connect` shell command, this makes it unnecessary to hardcode network
-// authentication secrets.
+// These macros add the `aio *` shell commands for controlling the MQTT broker
+// connection in the Zephyr shell over USB serial. MQTT broker config gets
+// read from 'zq3/url' setting stored in NVM flash (`settings write ...`).
 //
 SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
-	SHELL_CMD_ARG(conf, NULL, "Configure MQTT broker and topic with URL\n"
-		"Usage: conf mqtt[s]://[<user>]:[<key>]@<host>/<topic>\n"
-		"mqtt:// uses port 1883 and mqtts:// uses 8883.\n"
-		"Examples:\n"
-		"conf mqtt://:@192.168.0.50/test\n"
-		"conf mqtts://Blinka:aio_1234@io.adafruit.com/Blinka/f/test",
-		cmd_conf, 2, 0),
 	SHELL_CMD(connect, NULL, "Connect to broker", cmd_connect),
 	SHELL_CMD(disconnect, NULL, "Disconnect from broker", cmd_disconnect),
 	SHELL_SUBCMD_SET_END
@@ -550,7 +499,15 @@ int main(void) {
 			zq3_mqtt_publish(&ZCtx, &Ctx, state);
 		} else if (ZCtx.btn1_clicked && ZCtx.state != READY) {
 			ZCtx.btn1_clicked = false;
-			printk("Keypad pressed but MQTT connection is not READY\n");
+			if (!ZCtx.wifi_up) {
+				printk("starting wifi connection\n");
+				err = zq3_wifi_connect(ZCtx.ssid, ZCtx.psk);
+				if (err) {
+					printk("ERR: wifi connect: %d\n", err);
+				}
+			} else {
+				printk("Keypad pressed but MQTT connection is not READY\n");
+			}
 		}
 
 		// Check if MQTT message requested a change to the toggle state

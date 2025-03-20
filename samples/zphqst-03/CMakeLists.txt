@@ -9,4 +9,5 @@ target_sources(app PRIVATE
 	src/zq3_mqtt.c
 	src/zq3_dns.c
 	src/zq3_url.c
+	src/zq3_wifi.c
 )
