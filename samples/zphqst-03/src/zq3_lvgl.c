@@ -90,6 +90,9 @@ void zq3_lvgl_init(zq3_lvgl_context *ctx, lv_event_cb_t keypad_callback) {
 	display_blanking_off(display);
 }
 
+// Show a status message in the center of the screen. This is meant for errors
+// and network connection status indications. So, showing a message will hide
+// the big toggle switch.
 void zq3_lvgl_show_message(zq3_lvgl_context *ctx, const char *msg) {
 	hide(ctx->toggle);
 	show(ctx->status);
@@ -97,11 +100,13 @@ void zq3_lvgl_show_message(zq3_lvgl_context *ctx, const char *msg) {
 	lv_obj_set_style_text_align(ctx->status, LV_TEXT_ALIGN_CENTER, 0);
 }
 
+// Show the big toggle switch. This means MQTT is connected and subscribed
 void zq3_lvgl_show_toggle(zq3_lvgl_context *ctx) {
 	hide(ctx->status);
 	show(ctx->toggle);
 }
 
+// Change the toggle switch state: checked==true means on, false means off
 void zq3_lvgl_set_toggle(zq3_lvgl_context *ctx, bool checked) {
 	if (checked) {
 		lv_obj_add_state(ctx->toggle, LV_STATE_CHECKED);
@@ -110,11 +115,13 @@ void zq3_lvgl_set_toggle(zq3_lvgl_context *ctx, bool checked) {
 	}
 }
 
-uint32_t zq3_lvgl_timer_handler() {
-	return lv_timer_handler();
-}
-
+// Update wifi statusbar icon color: up==true means green, false means gray
 void zq3_lvgl_wifi_status(zq3_lvgl_context *ctx, bool up) {
 	lv_color_t color = up ? ctx->green : ctx->gray;
 	lv_obj_set_style_text_color(ctx->wifi, color, 0);
+}
+
+// The main event loop must call this frequently so LVGL can update the screen
+uint32_t zq3_lvgl_timer_handler() {
+	return lv_timer_handler();
 }
