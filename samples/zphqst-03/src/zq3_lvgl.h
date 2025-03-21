@@ -2,7 +2,6 @@
  * SPDX-FileCopyrightText: Copyright 2025 Sam Blenny
  * SPDX-License-Identifier: Apache-2.0
  */
-
 #ifndef ZQ3_LVGL_H
 #define ZQ3_LVGL_H
 
