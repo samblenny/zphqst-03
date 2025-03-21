@@ -136,7 +136,10 @@ static void net_callback(
 		ZCtx.wifi_up = true;
 		// Attempt to connect to the MQTT broker (once)
 		int err = zq3_mqtt_connect(&ZCtx, &Ctx);
-		if (!err) {
+		if (err) {
+			printk("[MQTT_ERR]\n");
+			ZCtx.state = MQTT_ERR;
+		} else {
 			printk("[CONWAIT]\n");
 			ZCtx.state = CONNWAIT;
 		}
@@ -167,6 +170,8 @@ static int cmd_wifi_dn(const struct shell *shell, size_t argc, char *argv[]) {
 static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
 	if (err) {
+		printk("[MQTT_ERR]\n");
+		ZCtx.state = MQTT_ERR;
 		return err;
 	}
 	printk("[CONWAIT]\n");
@@ -353,6 +358,7 @@ int main(void) {
 	zq3_state prev_state = ZCtx.state;
 	zq3_toggle prev_toggle = ZCtx.toggle;
 	zq3_lvgl_timer_handler();
+	zq3_lvgl_show_message(&LCtx, "Press\nBOOT button\nto connect");
 	while(1) {
 		// Update MQTT connection status if wifi connection went down
 		if ((ZCtx.state >= CONNWAIT) && !ZCtx.wifi_up) {
@@ -375,9 +381,14 @@ int main(void) {
 		// Set toggle switch visibility when MQTT connection changes
 		if (ZCtx.wifi_up && (prev_state != ZCtx.state)) {
 			prev_state = ZCtx.state;
-			if (ZCtx.state == READY) {
+			switch(ZCtx.state) {
+			case READY:
 				zq3_lvgl_show_toggle(&LCtx);
-			} else {
+				break;
+			case MQTT_ERR:
+				zq3_lvgl_show_message(&LCtx, "MQTT Error\n(check settings)");
+				break;
+			default:
 				zq3_lvgl_show_message(&LCtx, "MQTT is down");
 			}
 		}
@@ -451,7 +462,8 @@ int main(void) {
 				printk("starting wifi connection\n");
 				err = zq3_wifi_connect(ZCtx.ssid, ZCtx.psk);
 				if (err) {
-					zq3_lvgl_show_message(&LCtx, "Wifi Error");
+					zq3_lvgl_show_message(&LCtx,
+						"Wifi Error\n(check settings)");
 					printk("ERR: wifi connect: %d\n", err);
 				}
 			} else {
