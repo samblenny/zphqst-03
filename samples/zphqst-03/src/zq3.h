@@ -10,7 +10,10 @@
 
 // Sequence of connection states from no-connectivity up to mqtt-ready-to-go.
 typedef enum {
-	MQTT_DOWN, // disconnected from broker, but not in an error state
+	OFFLINE,   // waiting for button press to initiate wifi connection
+	WIFI_ERR,  // waiting for wifi error recovery (something went wrong)
+	WIFIWAIT,  // waiting for wifi to connect
+	WIFI_UP,   // wifi up, mqtt not connected to broker yet
 	MQTT_ERR,  // waiting for error recovery (something went wrong)
 	CONNWAIT,  // waiting for MQTT CONNACK event
 	CONNACK,   // subscribe to MQTT topic
@@ -37,8 +40,7 @@ typedef struct {
 	bool tls;            // MQTT should use TLS
 	bool mqtt_ok;        // MQTT configuration is valid (url parse worked)
 	zq3_state state;     // MQTT connection state (independent of wifi)
-	bool wifi_up;        // true when wifi connection is up
-	bool btn1_clicked;   // flag to tell event loop button 1 was clicked
+	bool keypress;       // flag to notify main loop of lvgl keypad press
 	bool got_0;          // flag for receiving MQTT PUBLISH message "0"
 	bool got_1;          // flag for receiving MQTT PUBLISH message "1"
 	zq3_toggle toggle;   // current state of toggle switch

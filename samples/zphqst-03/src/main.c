@@ -34,9 +34,8 @@ static zq3_context ZCtx = {
 	.topic = {'\0'},
 	.tls = true,
 	.mqtt_ok = false,
-	.state = MQTT_DOWN,
-	.wifi_up = false,
-	.btn1_clicked = false,
+	.state = OFFLINE,
+	.keypress = false,
 	.got_0 = false,
 	.got_1 = false,
 	.toggle = UNKNOWN,
@@ -64,20 +63,18 @@ static struct mqtt_client Ctx;
 static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 	switch (e->type) {
 	case MQTT_EVT_CONNACK:
-		printk("CONNACK\n");
-		// Update state telling the event loop to register subscription
 		ZCtx.state = CONNACK;
 		break;
 	case MQTT_EVT_DISCONNECT:
 		printk("DISCONNECT\n");
-		ZCtx.state = MQTT_DOWN;
+		ZCtx.state = MQTT_ERR;
 		ZCtx.toggle = UNKNOWN;   // because we're no longer subscribed
 		break;
 	case MQTT_EVT_PUBLISH:
 		// This happens when the broker informs us that somebody published a
 		// message to a topic we have subscribed to. The parameter, e->param,
 		// will be of type mqtt_publish_param.
-		printk("PUBLISH\n");
+
 		// First extract topic from the param struct and check for match
 		const struct mqtt_publish_message *m = &e->param.publish.message;
 		const uint8_t *topic = m->topic.topic.utf8;
@@ -88,6 +85,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 			printk("ignoring unknown topic (len = %d)\n", t_len);
 			return;
 		}
+
 		// Second, get the payload data and parse it.
 		// CAUTION: You can't get the payload data from the payload struct.
 		// Instead you have to call this function (see mqtt_evt_type docs).
@@ -98,6 +96,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 			printk("ERR: unexpected payload length: %d\n", count);
 			return;
 		}
+
 		// Parse payload data for expected messages: "1" or "0"
 		switch((char)buf[0]) {
 		case '0':
@@ -113,8 +112,6 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		}
 		break;
 	case MQTT_EVT_SUBACK:
-		printk("SUBACK\n");
-		// Update state telling event loop to publish to /get topic modifier
 		ZCtx.state = SUBACK;
 		break;
 	case MQTT_EVT_PINGRESP:
@@ -131,22 +128,16 @@ static void net_callback(
 	uint32_t mgmt_event,
 	struct net_if *iface
 ) {
-	if(mgmt_event == NET_EVENT_WIFI_CONNECT_RESULT) {
-		printk("[WIFI_UP]\n");
-		ZCtx.wifi_up = true;
-		// Attempt to connect to the MQTT broker (once)
-		int err = zq3_mqtt_connect(&ZCtx, &Ctx);
-		if (err) {
-			printk("[MQTT_ERR]\n");
-			ZCtx.state = MQTT_ERR;
-		} else {
-			printk("[CONWAIT]\n");
-			ZCtx.state = CONNWAIT;
-		}
-	} else if(mgmt_event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
-		printk("[WIFI_DOWN]\n");
-		ZCtx.wifi_up = false;
-	} else {
+	switch(mgmt_event) {
+	case NET_EVENT_WIFI_CONNECT_RESULT:
+		printk("NET_EVENT_WIFI_CONNECT_RESULT\n");
+		ZCtx.state = WIFI_UP;
+		break;
+	case NET_EVENT_WIFI_DISCONNECT_RESULT:
+		printk("NET_EVENT_WIFI_DISCONNECT_RESULT\n");
+		ZCtx.state = WIFI_ERR;
+		break;
+	default:
 		printk("net: unknown event\n");
 	}
 }
@@ -170,11 +161,9 @@ static int cmd_wifi_dn(const struct shell *shell, size_t argc, char *argv[]) {
 static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
 	if (err) {
-		printk("[MQTT_ERR]\n");
 		ZCtx.state = MQTT_ERR;
 		return err;
 	}
-	printk("[CONWAIT]\n");
 	ZCtx.state = CONNWAIT;
 	return 0;
 }
@@ -183,10 +172,10 @@ static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
 static int cmd_dn(const struct shell *shell, size_t argc, char *argv[]) {
 	int err = zq3_mqtt_disconnect(&Ctx);
 	if (err) {
+		ZCtx.state = MQTT_ERR;
 		return err;
 	}
-	printk("[MQTT_DOWN]\n");
-	ZCtx.state = MQTT_DOWN;
+	ZCtx.state = MQTT_ERR;  // CAUTION: WIFI_UP would trigger a reconnect
 	return 0;
 }
 
@@ -288,15 +277,8 @@ set_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
 	return 0;
 }
 
-// This callback gets triggered by settings_load() when all saved values have
-// been read.
-static int commit_cb(void) {
-	printk("Settings COMMIT\n");
-	return 0;
-}
-
 // This macro configures the callbacks to be invoked by settings_load()
-SETTINGS_STATIC_HANDLER_DEFINE(zq3, "zq3", NULL, set_cb, commit_cb, NULL);
+SETTINGS_STATIC_HANDLER_DEFINE(zq3, "zq3", NULL, set_cb, NULL, NULL);
 
 
 /*
@@ -305,7 +287,7 @@ SETTINGS_STATIC_HANDLER_DEFINE(zq3, "zq3", NULL, set_cb, commit_cb, NULL);
 
 // Callback to handle keypad input events
 static void keypad_pressed_callback(lv_event_t *event) {
-	ZCtx.btn1_clicked = true;
+	ZCtx.keypress = true;
 }
 
 
@@ -316,7 +298,6 @@ static void keypad_pressed_callback(lv_event_t *event) {
 int main(void) {
 	// Inits
 	struct net_mgmt_event_callback net_status;
-	int err;
 	zq3_lvgl_context LCtx;
 	zq3_lvgl_init(&LCtx, keypad_pressed_callback);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
@@ -354,42 +335,82 @@ int main(void) {
 	net_mgmt_add_event_callback(&net_status);
 
 	// Event loop
-	bool prev_wifi_up = false;
 	zq3_state prev_state = ZCtx.state;
 	zq3_toggle prev_toggle = ZCtx.toggle;
 	zq3_lvgl_timer_handler();
-	zq3_lvgl_show_message(&LCtx, "Press\nBOOT button\nto connect");
+	const char *offline_message = "Press\nBOOT button\nto connect";
+	zq3_lvgl_show_message(&LCtx, offline_message);
 	while(1) {
-		// Update MQTT connection status if wifi connection went down
-		if ((ZCtx.state >= CONNWAIT) && !ZCtx.wifi_up) {
-			mqtt_abort(&Ctx);
-			printk("[MQTT_DOWN]\n");
-			ZCtx.state = MQTT_DOWN;
-		}
-
-		// Set status bar wifi icon color when wifi connection changes
-		if (prev_wifi_up != ZCtx.wifi_up) {
-			if (ZCtx.wifi_up) {
-				zq3_lvgl_wifi_status(&LCtx, true);
-			} else {
-				zq3_lvgl_wifi_status(&LCtx, false);
-				zq3_lvgl_show_message(&LCtx, "Wifi offline");
-			}
-			prev_wifi_up = ZCtx.wifi_up;
-		}
-
-		// Set toggle switch visibility when MQTT connection changes
-		if (ZCtx.wifi_up && (prev_state != ZCtx.state)) {
+		int err;
+		// Update GUI when Wifi/MQTT connection state changes
+		if (prev_state != ZCtx.state) {
 			prev_state = ZCtx.state;
 			switch(ZCtx.state) {
-			case READY:
-				zq3_lvgl_show_toggle(&LCtx);
+			case OFFLINE:
+				// This happens when wifi disconnects for some reason
+				printk("[OFFLINE]\n");
+				zq3_lvgl_wifi_status(&LCtx, false);
+				zq3_lvgl_show_message(&LCtx, offline_message);
+				break;
+			case WIFI_ERR:
+				printk("[WIFI_ERR]\n");
+				zq3_lvgl_wifi_status(&LCtx, false);
+				zq3_lvgl_show_message(&LCtx, "Wifi Error\n(check settings)");
+				break;
+			case WIFIWAIT:
+				printk("[WIFIWAIT]\n");
+				zq3_lvgl_show_message(&LCtx, "Connecting...");
+				break;
+			case WIFI_UP:
+				// Light up the wifi icon in the statusbar
+				printk("[WIFI_UP]\n");
+				zq3_lvgl_wifi_status(&LCtx, true);
+				// Attempt to connect to the MQTT broker (once)
+				int err = zq3_mqtt_connect(&ZCtx, &Ctx);
+				if (err) {
+					ZCtx.state = MQTT_ERR;
+				} else {
+					ZCtx.state = CONNWAIT;
+				}
 				break;
 			case MQTT_ERR:
+				// Problem with MQTT settings, broker unreachable, etc.
+				printk("[MQTT_ERR]\n");
 				zq3_lvgl_show_message(&LCtx, "MQTT Error\n(check settings)");
 				break;
-			default:
-				zq3_lvgl_show_message(&LCtx, "MQTT is down");
+			case CONNWAIT:
+				// MQTT is connecting... just wait silently
+				printk("[CONWAIT]\n");
+				break;
+			case CONNACK:
+				// MQTT connected, so subscribe to topic
+				printk("[CONNACK]\n");
+				err = zq3_mqtt_subscribe(&ZCtx, &Ctx);
+				if (err) {
+					ZCtx.state = MQTT_ERR;
+				} else {
+					ZCtx.state = SUBWAIT;
+				}
+				break;
+			case SUBWAIT:
+				printk("[SUBWAIT]\n");
+				break;
+			case SUBACK:
+				printk("[SUBACK]\n");
+				ZCtx.state = READY;
+				break;
+			case READY:
+				printk("[READY]\n");
+
+				// Reset toggle switch state to UNKNOWN/not-checked. It would
+				// be possible to ask the broker for the topic's old value, but
+				// I'm skipping that to keep the code simpler.
+				ZCtx.toggle = UNKNOWN;
+				zq3_lvgl_set_toggle(&LCtx, false);
+
+				// Show the toggle switch in place of the status message
+				zq3_lvgl_show_toggle(&LCtx);
+				break;
 			}
 		}
 
@@ -408,66 +429,49 @@ int main(void) {
 			if (remaining_ms < 5000) {
 				mqtt_live(&Ctx);
 			}
-
-			// Part of the state machine for bringing up full MQTT connection
-			err = 0;
-			switch(ZCtx.state) {
-			case CONNACK:
-				// Subscribe to topic as soon as MQTT connection is up
-				err = zq3_mqtt_subscribe(&ZCtx, &Ctx);
-				if (err) {
-					zq3_lvgl_show_message(&LCtx, "MQTT Error");
-					printk("[MQTT_ERR]\n");
-					ZCtx.state = MQTT_ERR;
-				} else {
-					zq3_lvgl_show_message(&LCtx, "MQTT CONNACK");
-					printk("[SUBWAIT]\n");
-					ZCtx.state = SUBWAIT;
-				}
-				break;
-			case SUBACK:
-				// Publish to the topic's /get topic modifier as soon as the
-				// subscription has been ACK'd. This is meant to work with
-				// AdafruitIO which does not support normal MQTT retain.
-				err = zq3_mqtt_publish_get(&ZCtx, &Ctx);
-				if (err) {
-					zq3_lvgl_show_message(&LCtx, "MQTT Error");
-					printk("[MQTT_ERR]\n");
-					ZCtx.state = MQTT_ERR;
-				} else {
-					zq3_lvgl_show_message(&LCtx, "MQTT SUBACK");
-					printk("[READY]\n");
-					ZCtx.state = READY;
-				}
-				break;
-			default:
-				/* NOP */
-			}
 		}
 
-		// Respond to keypad press callback (do we need to PUBLISH a message?)
-		// CAUTION! This needs to happen before the check to update the toggle
-		// switch widget.
-		if (ZCtx.btn1_clicked && ZCtx.state == READY) {
-			ZCtx.btn1_clicked = false;
-			// This evaluates to true when .toggle is UNKNOWN or OFF
-			bool state = ZCtx.toggle != ON;
-			ZCtx.toggle = state ? ON : OFF;
-			printk("KEYPRESS: publishing toggle = %d\n", state ? 1 : 0);
-			zq3_mqtt_publish(&ZCtx, &Ctx, state);
-		} else if (ZCtx.btn1_clicked && ZCtx.state != READY) {
-			ZCtx.btn1_clicked = false;
-			if (!ZCtx.wifi_up) {
-				zq3_lvgl_show_message(&LCtx, "Wifi Connecting...");
+		// If keypad press callback set the button press flag, handle it
+		if (ZCtx.keypress) {
+			ZCtx.keypress = false;
+			switch(ZCtx.state) {
+			case WIFI_ERR:
+				// Retry from error state (maybe after changing settings)...
+				// fall through to the OFFLINE case
+			case OFFLINE:
+				// Attempt to start a wifi connection
 				printk("starting wifi connection\n");
 				err = zq3_wifi_connect(ZCtx.ssid, ZCtx.psk);
 				if (err) {
-					zq3_lvgl_show_message(&LCtx,
-						"Wifi Error\n(check settings)");
+					ZCtx.state = WIFI_ERR;
 					printk("ERR: wifi connect: %d\n", err);
+				} else {
+					ZCtx.state = WIFIWAIT;
 				}
-			} else {
-				printk("Keypad pressed but MQTT connection is not READY\n");
+				break;
+			case MQTT_ERR:
+				// Trigger an MQTT connection retry attempt (maybe after
+				// changing settings, fixing the MQTT broker, or whatever)
+				ZCtx.state = WIFI_UP;
+				break;
+			case READY:
+				// MQTT is up and ready: key press means toggle the switch
+				// and publish its new value.
+				//
+				// This will apply the following transformations to .toggle:
+				//   UKNOWN becomes ON
+				//   OFF    becomes ON
+				//   ON     becomes OFF
+				bool new_state = ZCtx.toggle != ON;
+				ZCtx.toggle = new_state ? ON : OFF;
+				printk("Publishing toggle state: %d\n", new_state ? 1 : 0);
+				err = zq3_mqtt_publish(&ZCtx, &Ctx, new_state);
+				if (err) {
+					ZCtx.state = MQTT_ERR;
+				}
+				break;
+			default:
+				printk("Keypad pressed (NOP)\n");
 			}
 		}
 

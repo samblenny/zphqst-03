@@ -62,15 +62,6 @@ int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx) {
 }
 
 
-// Publish to the topic's /get topic modifier in the styel used by AdafruitIO.
-// This mechanism is an alternative to the normal MQTT retain feature.
-//
-int zq3_mqtt_publish_get(zq3_context *zctx, struct mqtt_client *mctx) {
-	// TODO: implement this
-	printk("TODO: IMPLEMENT PUBLISH GET\n");
-	return 0;
-}
-
 // Publish new toggle switch state to the topic.
 // Related docs:
 // - https://docs.zephyrproject.org/latest/doxygen/html/structmqtt__publish__param.html
@@ -83,7 +74,6 @@ int
 zq3_mqtt_publish(zq3_context *zctx, struct mqtt_client *mctx, bool toggle)
 {
 	char * state = toggle ? "1" : "0";
-	printk("Publishing toggle state = %s\n", state);
 	// Build a C99 compound literal representing the message to be published
 	const struct mqtt_publish_param param = {
 		.message = (struct mqtt_publish_message){
@@ -121,7 +111,7 @@ int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx) {
 		printk("ERR: MQTT broker not configured\n");
 		return 1;
 	}
-	if (!zctx->wifi_up) {
+	if (zctx->state < WIFI_UP) {
 		printk("ERR: Wifi not connected\n");
 		return 2;
 	}

@@ -10,8 +10,6 @@
 
 int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx);
 
-int zq3_mqtt_publish_get(zq3_context *zctx, struct mqtt_client *mctx);
-
 int zq3_mqtt_publish(zq3_context *zctx, struct mqtt_client *mctx, bool toggle);
 
 int zq3_mqtt_connect(zq3_context *zctx, struct mqtt_client *mctx);
