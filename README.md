@@ -283,7 +283,7 @@ $ sudo apt install mosquitto mosquitto-clients
 Check the IP address assigned to my wifi interface:
 ```
 $ hostname -I | grep -o '192[^ ]*'
-192.168.0.50
+192.168.0.100
 ```
 
 Reconfigure `mosquitto` MQTT broker to listen on wifi IP (DANGER!)
@@ -291,7 +291,7 @@ Reconfigure `mosquitto` MQTT broker to listen on wifi IP (DANGER!)
 $ cat <<EOF | sudo tee /etc/mosquitto/conf.d/LAN-listener.conf
 persistence false
 allow_anonymous true
-listener 1883 192.168.0.50
+listener 1883 192.168.0.100
 listener 1883 127.0.0.1
 EOF
 $ sudo systemctl restart mosquitto
@@ -308,12 +308,12 @@ $ sudo systemctl restart mosquitto
 
 On Debian, if you install the `mosquitto-clents` package, you can publish and
 subscribe to MQTT topics from the command line. For example, assuming you were
-running an MQTT broker listening on IP address 192.168.0.50, you could start
+running an MQTT broker listening on IP address 192.168.0.100, you could start
 two terminal windows (or use `tmux`), and do this:
 
 Terminal 1 (use Ctrl-C to disconnect `mosquitto_sub` when done):
 ```
-$ mosquitto_sub --debug -v -L mqtt://192.168.0.50:1883/test
+$ mosquitto_sub --debug -v -L mqtt://192.168.0.100:1883/test
 Client (null) sending CONNECT
 Client (null) received CONNACK (0)
 Client (null) sending SUBSCRIBE (Mid: 1, Topic: test, QoS: 0, Options: 0x00)
@@ -326,7 +326,7 @@ test hello world
 
 Terminal 2:
 ```
-$ mosquitto_pub --debug -L mqtt://192.168.0.50:1883/test -m "hello world"
+$ mosquitto_pub --debug -L mqtt://192.168.0.100:1883/test -m "hello world"
 Client (null) sending CONNECT
 Client (null) received CONNACK (0)
 Client (null) sending PUBLISH (d0, q0, r0, m1, 'test', ... (11 bytes))
