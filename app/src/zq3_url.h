@@ -5,10 +5,10 @@
 #ifndef ZQ3_URL_H
 #define ZQ3_URL_H
 
+#include "zq3_mqtt.h"
 
-void zq3_url_print_conf(zq3_context *zctx);
 
-int zq3_url_parse(zq3_context *zctx, const char *url);
+int zq3_url_parse(zq3_mqtt_context *mctx, const char *url);
 
 
 #endif /* ZQ3_URL_H */

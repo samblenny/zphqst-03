@@ -3,41 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "zq3.h"
+#include "zq3_mqtt.h"
 
 
-// Debug print the config resulting from parsing the MQTT URL
-void zq3_url_print_conf(zq3_context *zctx) {
-	printk(
-		"MQTT Broker Config:\n"
-		"  ssid:   '%s'\n"
-		"  psk:    '%s'\n"
-		"  user:   '%s'\n"
-		"  pass:   '%s'\n"
-		"  host:   '%s'\n"
-		"  topic:  '%s'\n"
-		"  tls:     %s\n"
-		"  mqtt_ok: %s\n",
-		zctx->ssid, zctx->psk,
-		zctx->user, zctx->pass, zctx->host, zctx->topic,
-		zctx->tls ? "true" : "false", zctx->mqtt_ok ? "true" : "false"
-	);
-}
-
-// Parse an MQTT broker url into fields of the zq3_context struct
+// Parse an MQTT broker url into fields of the zq3_mqtt_context struct
 // Examples of expected url format (TLS and non-TLS):
 //   mqtts://Blinka:password@io.adafruit.com/Blinka/feeds/test
 //   mqtt://:@192.168.0.50/test
 //
-int zq3_url_parse(zq3_context *zctx, const char *url) {
-	// Clear MQTT config fields and begin parsing
-	memset(zctx->user, 0, sizeof(zctx->user));
-	memset(zctx->pass, 0, sizeof(zctx->pass));
-	memset(zctx->host, 0, sizeof(zctx->host));
-	memset(zctx->topic, 0, sizeof(zctx->topic));
-	zctx->tls = false;
-	zctx->mqtt_ok = false;
-
+int zq3_url_parse(zq3_mqtt_context *mctx, const char *url) {
 	const char *cursor = url;
 
 	// Parse URL scheme prefix (should be "mqtt://" or "mqtts://")
@@ -46,14 +20,14 @@ int zq3_url_parse(zq3_context *zctx, const char *url) {
 	if (strncmp(url, tls_scheme, strlen(tls_scheme)) == 0) {
 		// Scheme = MQTT with TLS
 		cursor += strlen(tls_scheme);
-		zctx->tls = true;
+		zq3_mqtt_set_tls(mctx, true);
 	} else if (strncmp(url, nontls_scheme, strlen(nontls_scheme)) == 0) {
 		// Scheme = unencrypted MQTT
 		cursor += strlen(nontls_scheme);
-		zctx->tls = false;
+		zq3_mqtt_set_tls(mctx, false);
 	} else {
 		printk("ERROR: expected mqtt:// or mqtts://\n");
-		return 3;
+		return -EINVAL;
 	}
 
 	// Parse username (whatever is between end of scheme and the next ':')
@@ -61,13 +35,13 @@ int zq3_url_parse(zq3_context *zctx, const char *url) {
 	int len = delim - cursor;
 	if (!delim || len < 0) {
 		printk("ERR: missing ':' after username\n");
-		return 4;
-	} else if (len >= sizeof(zctx->user)) {
+		return -EINVAL;
+	} else if (len >= sizeof(mctx->user_buf)) {
 		printk("ERR: username too long\n");
-		return 5;
+		return -EINVAL;
 	} else {
-		// Copy username string (relies on len < sizeof(...))
-		memcpy(zctx->user, cursor, len);
+		// Copy username string
+		zq3_mqtt_set_username(mctx, cursor, len);
 		cursor = delim + 1;
 	}
 
@@ -76,13 +50,13 @@ int zq3_url_parse(zq3_context *zctx, const char *url) {
 	len = delim - cursor;
 	if (!delim || len < 0) {
 		printk("ERR: missing '@' after password\n");
-		return 6;
-	} else if (len >= sizeof(zctx->pass)) {
+		return -EINVAL;
+	} else if (len >= sizeof(mctx->pass_buf)) {
 		printk("ERR: password too long\n");
-		return 7;
+		return -EINVAL;
 	} else {
-		// Copy password string (relies on len < sizeof(...))
-		memcpy(zctx->pass, cursor, len);
+		// Copy password string
+		zq3_mqtt_set_password(mctx, cursor, len);
 		cursor = delim + 1;
 	}
 
@@ -91,16 +65,16 @@ int zq3_url_parse(zq3_context *zctx, const char *url) {
 	len = delim - cursor;
 	if (!delim) {
 		printk("ERR: missing '/' after hostname\n");
-		return 8;
+		return -EINVAL;
 	} else if (len < 1) {
 		printk("ERR: hostname can't be blank\n");
-		return 9;
-	} else if (len >= sizeof(zctx->host)) {
+		return -EINVAL;
+	} else if (len >= sizeof(mctx->hostname)) {
 		printk("ERR: hostname too long\n");
-		return 10;
+		return -EINVAL;
 	} else {
-		// Copy hostname string (relies on len < sizeof(...))
-		memcpy(zctx->host, cursor, len);
+		// Copy hostname string
+		zq3_mqtt_set_hostname(mctx, cursor, len);
 		cursor = delim + 1;
 	}
 
@@ -108,13 +82,13 @@ int zq3_url_parse(zq3_context *zctx, const char *url) {
 	len = strlen(cursor);
 	if (len <= 0) {
 		printk("ERR: topic can't be blank\n");
-		return 11;
-	} else if (len >= sizeof(zctx->topic)) {
+		return -EINVAL;
+	} else if (len >= sizeof(mctx->topic)) {
 		printk("ERR: topic too long\n");
-		return 12;
+		return -EINVAL;
 	} else {
-		// Copy topic string (relies on len < sizeof(...))
-		memcpy(zctx->topic, cursor, len);
+		// Copy topic string
+		zq3_mqtt_set_topic(mctx, cursor, len);
 	}
 
 	return 0;

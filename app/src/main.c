@@ -28,11 +28,6 @@
 static zq3_context ZCtx = {
 	.ssid = {'\0'},
 	.psk =  {'\0'},
-	.user = {'\0'},
-	.pass = {'\0'},
-	.host = {'\0'},
-	.topic = {'\0'},
-	.tls = true,
 	.mqtt_ok = false,
 	.state = OFFLINE,
 	.keypress = false,
@@ -41,10 +36,8 @@ static zq3_context ZCtx = {
 	.toggle = UNKNOWN,
 };
 
-struct sockaddr_storage AIOBroker;
-
-// MQTT context struct
-static struct mqtt_client Ctx;
+// MQTT context struct (initialized by zq3_mqtt_init())
+static zq3_mqtt_context MCtx;
 
 
 /*
@@ -79,9 +72,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		const struct mqtt_publish_message *m = &e->param.publish.message;
 		const uint8_t *topic = m->topic.topic.utf8;
 		uint32_t t_len = m->topic.topic.size;
-		if (t_len >= sizeof(ZCtx.topic)
-			|| memcmp(topic, ZCtx.topic, t_len)
-		) {
+		if (t_len >= sizeof(MCtx.topic) || memcmp(topic, MCtx.topic, t_len)) {
 			printk("ignoring unknown topic (len = %d)\n", t_len);
 			return;
 		}
@@ -91,7 +82,7 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		// Instead you have to call this function (see mqtt_evt_type docs).
 		uint8_t buf[32] = {0};
 		uint32_t payload_len = m->payload.len;
-		int count = mqtt_read_publish_payload(&Ctx, buf, sizeof(buf));
+		int count = mqtt_read_publish_payload(&MCtx.client, buf, sizeof(buf));
 		if (count != 1 || count != payload_len) {
 			printk("ERR: unexpected payload length: %d\n", count);
 			return;
@@ -160,7 +151,7 @@ static int cmd_wifi_dn(const struct shell *shell, size_t argc, char *argv[]) {
 
 // Connect to MQTT broker
 static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
-	int err = zq3_mqtt_connect(&ZCtx, &Ctx);
+	int err = zq3_mqtt_connect(&MCtx);
 	if (err) {
 		ZCtx.state = MQTT_ERR;
 		return err;
@@ -171,7 +162,7 @@ static int cmd_up(const struct shell *shell, size_t argc, char *argv[]) {
 
 // Disconnect from MQTT broker
 static int cmd_dn(const struct shell *shell, size_t argc, char *argv[]) {
-	int err = zq3_mqtt_disconnect(&Ctx);
+	int err = zq3_mqtt_disconnect(&MCtx);
 	if (err) {
 		ZCtx.state = MQTT_ERR;
 		return err;
@@ -185,11 +176,6 @@ static int cmd_reload(const struct shell *shell, size_t argc, char *argv[]) {
 	// Clear wifi and MQTT settings from context struct
 	memset(ZCtx.ssid, 0, sizeof(ZCtx.ssid));
 	memset(ZCtx.psk, 0, sizeof(ZCtx.psk));
-	memset(ZCtx.user, 0, sizeof(ZCtx.user));
-	memset(ZCtx.pass, 0, sizeof(ZCtx.pass));
-	memset(ZCtx.host, 0, sizeof(ZCtx.host));
-	memset(ZCtx.topic, 0, sizeof(ZCtx.topic));
-	ZCtx.tls = false;
 	ZCtx.mqtt_ok = false;
 	// Load saved settings
 	return settings_load();
@@ -239,24 +225,18 @@ set_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
 	int vlen = strlen(buf);
 	if (strcmp("url", key) == 0) {
 		// Parse MQTT URL and save components to context struct
-		if (vlen >= ZQ3_URL_MAX_LEN) {
+		if (vlen >= ZQ3_MQTT_URL_MAX_LEN) {
 			printk("ERR: setting for '%s' is too long: %d\n", key, vlen);
 			return -EOVERFLOW;
 		}
-		int err = zq3_url_parse(&ZCtx, buf);
+		int err = zq3_url_parse(&MCtx, buf);
 		if (err) {
 			printk("ERR settings: failed to parse url: %d\n", err);
+			ZCtx.mqtt_ok = false;
 			return err;
 		}
 		// Success
 		ZCtx.mqtt_ok = true;
-		// Update string lengths in MQTT context (see main() inits section)
-		if(Ctx.password != NULL) {
-			Ctx.password->size = strlen(Ctx.password->utf8);
-		}
-		if(Ctx.user_name != NULL) {
-			Ctx.user_name->size = strlen(Ctx.user_name->utf8);
-		}
 	} else if (strcmp("ssid", key) == 0) {
 		// Save Wifi SSID to context struct
 		if (vlen >= sizeof(ZCtx.ssid)) {
@@ -303,32 +283,12 @@ int main(void) {
 	zq3_lvgl_init(&LCtx, keypad_pressed_callback);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "Adafruit IO MQTT commands", NULL);
 	settings_subsys_init();
+	zq3_mqtt_init(&MCtx, mq_handler);
+
 	printk("Loading Settings\n");
 	settings_load();
 
 	// MQTT Init
-	mqtt_client_init(&Ctx);
-	uint8_t MQRxBuf[256];
-	uint8_t MQTxBuf[256];
-	struct mqtt_utf8 pass = {(uint8_t *)ZCtx.pass, strlen(ZCtx.pass)};
-	struct mqtt_utf8 user = {(uint8_t *)ZCtx.user, strlen(ZCtx.user)};
-	Ctx.broker = &AIOBroker;
-	Ctx.evt_cb = mq_handler;
-	Ctx.client_id.utf8 = (uint8_t *)"id";  // protocol requires non-empty id
-	Ctx.client_id.size = strlen("id");
-	Ctx.password = &pass;
-	Ctx.user_name = &user;
-	Ctx.protocol_version = MQTT_VERSION_3_1_1;
-	Ctx.transport.type = MQTT_TRANSPORT_NON_SECURE;  // TODO: use TLS
-	Ctx.rx_buf = MQRxBuf;
-	Ctx.rx_buf_size = sizeof(MQRxBuf);
-	Ctx.tx_buf = MQTxBuf;
-	Ctx.tx_buf_size = sizeof(MQTxBuf);
-	// TODO: add TLS support
-	// Ctx.transport.type = MQTT_TRANSPORT_SECURE;
-	// struct mqtt_sec_config *conf = &Ctx.transport.tls.config;
-	// conf->cipher_list = NULL;
-	// conf->hostname = MQTT_BROKER_HOSTNAME;
 
 	// Register to get updates about wifi connection status
 	net_mgmt_init_event_callback(&net_status, net_callback,
@@ -367,7 +327,7 @@ int main(void) {
 				printk("[WIFI_UP]\n");
 				zq3_lvgl_wifi_status(&LCtx, true);
 				// Attempt to connect to the MQTT broker (once)
-				int err = zq3_mqtt_connect(&ZCtx, &Ctx);
+				int err = zq3_mqtt_connect(&MCtx);
 				if (err) {
 					ZCtx.state = MQTT_ERR;
 				} else {
@@ -386,7 +346,7 @@ int main(void) {
 			case CONNACK:
 				// MQTT connected, so subscribe to topic
 				printk("[CONNACK]\n");
-				err = zq3_mqtt_subscribe(&ZCtx, &Ctx);
+				err = zq3_mqtt_subscribe(&MCtx);
 				if (err) {
 					ZCtx.state = MQTT_ERR;
 				} else {
@@ -415,21 +375,12 @@ int main(void) {
 			}
 		}
 
-		// Maintain MQTT connection (note: poll() requires CONFIG_POSIX_API=y)
+		// Maintain MQTT connection
 		if (ZCtx.state >= CONNWAIT) {
 			// Respond to incoming MQTT messages if needed
-			if (poll(ZCtx.fds, 1, 0) > 0) {
-				mqtt_input(&Ctx);
-			}
-
-			// Send an MQTT PINGREQ ping several seconds before the keepalive
-			// timer is due to run out. This keeps the TCP connection to the
-			// MQTT broker open so it can send us messages on subscribed topics
-			// as they are published.
-			int remaining_ms = mqtt_keepalive_time_left(&Ctx);
-			if (remaining_ms < 5000) {
-				mqtt_live(&Ctx);
-			}
+			zq3_mqtt_poll(&MCtx);
+			// Keep the connection up with pings
+			zq3_mqtt_keepalive(&MCtx);
 		}
 
 		// If keypad press callback set the button press flag, handle it
@@ -466,7 +417,7 @@ int main(void) {
 				bool new_state = ZCtx.toggle != ON;
 				ZCtx.toggle = new_state ? ON : OFF;
 				printk("Publishing toggle state: %d\n", new_state ? 1 : 0);
-				err = zq3_mqtt_publish(&ZCtx, &Ctx, new_state);
+				err = zq3_mqtt_publish(&MCtx, new_state);
 				if (err) {
 					ZCtx.state = MQTT_ERR;
 				}

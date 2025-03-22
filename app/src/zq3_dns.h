@@ -5,6 +5,10 @@
 #ifndef ZQ3_DNS_H
 #define ZQ3_DNS_H
 
-int zq3_dns_resolve(zq3_context *zctx, struct sockaddr_storage *broker);
+int zq3_dns_resolve(
+	const uint8_t *name,
+	bool tls,
+	struct sockaddr_storage *addr
+);
 
 #endif /* ZQ3_DNS_H */
