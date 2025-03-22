@@ -181,18 +181,6 @@ static int cmd_reload(const struct shell *shell, size_t argc, char *argv[]) {
 	return settings_load();
 }
 
-// These macros add the `aio *` shell commands for controlling the MQTT broker
-// connection in the Zephyr shell over USB serial. MQTT broker config gets
-// read from 'zq3/url' setting stored in NVM flash (`settings write ...`).
-//
-SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
-	SHELL_CMD(wifi_up, NULL, "Wifi connect", cmd_wifi_up),
-	SHELL_CMD(wifi_dn, NULL, "Wifi disconnect", cmd_wifi_dn),
-	SHELL_CMD(up, NULL, "AIO MQTT broker connect", cmd_up),
-	SHELL_CMD(dn, NULL, "AIO MQTT broker disconnect", cmd_dn),
-	SHELL_CMD(reload, NULL, "Reload settings", cmd_reload),
-	SHELL_SUBCMD_SET_END
-);
 
 
 /*
@@ -258,9 +246,6 @@ set_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg)
 	return 0;
 }
 
-// This macro configures the callbacks to be invoked by settings_load()
-SETTINGS_STATIC_HANDLER_DEFINE(zq3, "zq3", NULL, set_cb, NULL, NULL);
-
 
 /*
 * KEYPAD BUTTON PRESS CALLBACK
@@ -273,6 +258,27 @@ static void keypad_pressed_callback(lv_event_t *event) {
 
 
 /*
+* STATIC CALLBACK MACROS (shell & settings)
+*/
+
+// These macros add the `aio *` shell commands for controlling the MQTT broker
+// connection in the Zephyr shell over USB serial. MQTT broker config gets
+// read from 'zq3/url' setting stored in NVM flash (`settings write ...`).
+//
+SHELL_STATIC_SUBCMD_SET_CREATE(aio_cmds,
+	SHELL_CMD(wifi_up, NULL, "Wifi connect", cmd_wifi_up),
+	SHELL_CMD(wifi_dn, NULL, "Wifi disconnect", cmd_wifi_dn),
+	SHELL_CMD(up, NULL, "AIO MQTT broker connect", cmd_up),
+	SHELL_CMD(dn, NULL, "AIO MQTT broker disconnect", cmd_dn),
+	SHELL_CMD(reload, NULL, "Reload settings", cmd_reload),
+	SHELL_SUBCMD_SET_END
+);
+
+// This macro configures the callbacks to be invoked by settings_load()
+SETTINGS_STATIC_HANDLER_DEFINE(zq3, "zq3", NULL, set_cb, NULL, NULL);
+
+
+/*
 * MAIN
 */
 
@@ -282,13 +288,12 @@ int main(void) {
 	zq3_lvgl_context LCtx;
 	zq3_lvgl_init(&LCtx, keypad_pressed_callback);
 	SHELL_CMD_REGISTER(aio, &aio_cmds, "Adafruit IO MQTT commands", NULL);
-	settings_subsys_init();
 	zq3_mqtt_init(&MCtx, mq_handler);
+	settings_subsys_init();
 
+	// Get settings from NVM flash using the Settings API
 	printk("Loading Settings\n");
 	settings_load();
-
-	// MQTT Init
 
 	// Register to get updates about wifi connection status
 	net_mgmt_init_event_callback(&net_status, net_callback,
