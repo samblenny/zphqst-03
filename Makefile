@@ -5,7 +5,7 @@
 #_CMAKE_ECHO=-DCMAKE_EXECUTE_PROCESS_COMMAND_ECHO=STDERR
 
 # Build custom shell with wifi turned on and extra stuff disabled
-shell:
+app:
 	west build -b feather_tft_esp32s3/esp32s3/procpu  \
 		samples/zphqst-03                             \
 		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
@@ -43,4 +43,4 @@ monitor:
 clean:
 	rm -rf build
 
-.PHONY: shell button lvgl menuconfig flash monitor clean
+.PHONY: app button lvgl menuconfig flash monitor clean
