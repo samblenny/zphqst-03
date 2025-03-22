@@ -348,6 +348,41 @@ $ mosquitto_pub -L mqtts://$USER:$KEY@io.adafruit.com:8883/$USER/f/test -m 1
 ```
 
 
+## Notes on TLS Config
+
+
+### Checking the Adafruit IO TLS Certificate
+
+To check the Adafruit IO certificate chain with the `openssl` command line tool
+from a terminal shell on Debian 12:
+
+```
+openssl s_client -showcerts -connect io.adafruit.com:8883
+```
+
+The output is long, but the main relevant points are:
+
+- First cert: `O = Adafruit Industries LLC,  CN = *.adafruit.com`
+  with `a:PKEY: rsaEncryption, 2048 (bit); sigalg: RSA-SHA256` and
+  `NotAfter: Aug  2 23:59:59 2025 GMT`
+- Second cert: `OU = www.digicert.com, CN = GeoTrust TLS RSA CA G1`
+  with `a:PKEY: rsaEncryption, 2048 (bit); sigalg: RSA-SHA256` and
+  `NotAfter: Nov  2 12:23:37 2027 GMT`
+- Third cert: `OU = www.digicert.com, CN = DigiCert Global Root G2`
+- Negotiated connection used `TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384`
+
+
+### Deciding Which Features to Enable
+
+To match the signature and stream ciphers used by the openssl check, mbed TLS
+would need to be configured to support:
+
+- Signature: `RSA-SHA256` with 2048-bit RSA key
+- Cipher: `TLS_AES_256_GCM_SHA384`
+- TLS Version: TLSv1.3
+- CA Cert: `DigiCert Global Root G2` or perhaps `GeoTrust TLS RSA CA G1`
+
+
 ## 2025-03-14 Update: New official Zephyr board defs
 
 Pull request
