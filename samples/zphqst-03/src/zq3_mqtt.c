@@ -49,7 +49,6 @@ int zq3_mqtt_subscribe(zq3_context *zctx, struct mqtt_client *mctx) {
 	};
 	// Send the subscription request
 	int err = mqtt_subscribe(mctx, &list);
-	printk("mqtt_subscribe() = %d\n", err);
 	if(err) {
 		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
 		switch(-err) {

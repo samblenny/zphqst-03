@@ -115,7 +115,8 @@ static void mq_handler(struct mqtt_client *client, const struct mqtt_evt *e) {
 		ZCtx.state = SUBACK;
 		break;
 	case MQTT_EVT_PINGRESP:
-		printk("PINGRESP\n");
+		// This can be useful, but it's noisy
+		//printk("PINGRESP\n");
 		break;
 	default:
 		break;
