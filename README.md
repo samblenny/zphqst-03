@@ -78,7 +78,7 @@ make targets defined in the zphqst-03 [Makefile](Makefile). Using `make`
 avoids a lot of typing that would otherwise be required to provide commandline
 options to `west`.
 
-To build and flash the [IoT toggle switch](samples/zphqst-03) sample app:
+To build and flash the [IoT toggle switch](app/zphqst-03) app:
 
 ```
 make clean
@@ -204,7 +204,7 @@ Troubleshooting Checklist:
 
 The settings API uses the NVM backend with the `storage` partition that is
 defined as one of Espressif's default partitions in
-`zephyr/dts/common/espressif/partitions_0x0_amp_4M.dtsi`. My sample app's
+`zephyr/dts/common/espressif/partitions_0x0_amp_4M.dtsi`. My app's
 Devicetree configuration gives this partition the label of "settings".
 
 Depending on how you used your Feather TFT ESP32-S3 board previously, there
@@ -254,7 +254,7 @@ uart:~$ settings -h
 ```
 
 To see the Kconfig options that enable those shell commands, check out
-[samples/zphqst-03/prj.conf](samples/zphqst-03/prj.conf).
+[app/zphqst-03/prj.conf](app/zphqst-03/prj.conf).
 
 
 
