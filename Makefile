@@ -6,26 +6,8 @@
 
 # Build custom shell with wifi turned on and extra stuff disabled
 app:
-	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		app/zphqst-03                                 \
-		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
-		-DCONFIG_LV_COLOR_16_SWAP=y
-
-# Build Zephyr button sample
-button:
-	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		../zephyr/samples/basic/button                \
-		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
-		-DCONFIG_HEAP_MEM_POOL_SIZE=2048
-
-# Build Zephyr's subsys/display/lvgl sample. This has "Hello world1" in black
-# text on a white background along with a counter that can be reset by
-# pressing sw0 (Boot button).
-lvgl:
-	west build -b feather_tft_esp32s3/esp32s3/procpu  \
-		../zephyr/samples/subsys/display/lvgl         \
-		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}        \
-		-DCONFIG_HEAP_MEM_POOL_SIZE=2048              \
+	west build -b feather_tft_esp32s3/esp32s3/procpu app \
+		-- -DBOARD_ROOT=$$(pwd) ${_CMAKE_ECHO}           \
 		-DCONFIG_LV_COLOR_16_SWAP=y
 
 # Interactively modify config from previous build

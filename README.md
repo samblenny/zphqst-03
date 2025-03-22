@@ -78,7 +78,7 @@ make targets defined in the zphqst-03 [Makefile](Makefile). Using `make`
 avoids a lot of typing that would otherwise be required to provide commandline
 options to `west`.
 
-To build and flash the [IoT toggle switch](app/zphqst-03) app:
+To build and flash the [IoT toggle switch](app) app:
 
 ```
 make clean
@@ -254,7 +254,7 @@ uart:~$ settings -h
 ```
 
 To see the Kconfig options that enable those shell commands, check out
-[app/zphqst-03/prj.conf](app/zphqst-03/prj.conf).
+[app/prj.conf](app/prj.conf).
 
 
 
