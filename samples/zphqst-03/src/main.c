@@ -300,7 +300,7 @@ int main(void) {
 	struct net_mgmt_event_callback net_status;
 	zq3_lvgl_context LCtx;
 	zq3_lvgl_init(&LCtx, keypad_pressed_callback);
-	SHELL_CMD_REGISTER(aio, &aio_cmds, "AdafruitIO MQTT commands", NULL);
+	SHELL_CMD_REGISTER(aio, &aio_cmds, "Adafruit IO MQTT commands", NULL);
 	settings_subsys_init();
 	printk("Loading Settings\n");
 	settings_load();

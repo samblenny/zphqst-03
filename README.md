@@ -194,7 +194,7 @@ Troubleshooting Checklist:
    (except this app always requires the `:` and `@`).
 
 7. Is your account being throttled by the MQTT broker because of exceeding
-   rate limits? For example, if you use AdafruitIO, you can read about
+   rate limits? For example, if you use Adafruit IO, you can read about
    throttling in the
    [Adafruit IO MQTT API](https://io.adafruit.com/api/docs/mqtt.html#adafruit-io-mqtt-api)
    web docs.

@@ -11,7 +11,7 @@
  * https://docs.zephyrproject.org/latest/connectivity/networking/api/sockets.html#secure-sockets-interface
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/include/zephyr/net/socket.h
  *
- * AdafruitIO MQTT Settings:
+ * Adafruit IO MQTT Settings:
  * host:port: io.adafruit.com:8883
  */
 

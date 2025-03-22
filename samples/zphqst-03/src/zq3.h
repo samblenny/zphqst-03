@@ -29,7 +29,7 @@ typedef enum {
 	ON,       // toggle is on
 } zq3_toggle;
 
-// AdafruitIO MQTT broker auth credentials, hostname, topic, and scheme
+// Adafruit IO MQTT broker auth credentials, hostname, topic, and scheme
 typedef struct {
 	char ssid[32];       // wifi ssid
 	char psk[64];        // wifi WPA2 passphrase
