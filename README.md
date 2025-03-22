@@ -254,7 +254,7 @@ uart:~$ settings -h
 ```
 
 To see the Kconfig options that enable those shell commands, check out
-[samples/zphqst-03/CMakeLists.txt](samples/zphqst-03/CMakeLists.txt).
+[samples/zphqst-03/prj.conf](samples/zphqst-03/prj.conf).
 
 
 
