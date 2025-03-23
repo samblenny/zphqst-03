@@ -260,47 +260,48 @@ To see the Kconfig options that enable those shell commands, check out
 
 ## Local MQTT Broker for Testing
 
-**CAUTION:** This technique is risky if you don't take proper precautions.
-**Don't do this on public wifi** or on a server that has a network interface
-with a public IP address. On a private home network, behind a NAT router, it's
-probably fine, but it would be safer to turn it off when you're done testing.
 
-For testing MQTT stuff, it can be helpful to run your own MQTT broker locally.
+### Easy Unencrypted Version
+
+For getting started with testing MQTT stuff, it can be helpful to run your own
+MQTT broker locally on a private network (Raspberry Pi, Debian box, or
+whatever).
+
 There are a lot of steps involved in setting up the Zephyr code for an MQTT
-client. Attempting to do all of that at once, including TLS certificates and
-authentication, may be difficult to debug. It may help to start with basic
-unencrypted (non-TLS) MQTT connections on a private network, then
-incrementally add encryption and authentication.
+client. Attempting to do all of that at once is challenging. You might find it
+easier to start with basic unencrypted (non-TLS) MQTT connections on a private
+network, then incrementally add encryption and authentication.
+
+**CAUTION: Using this type of configuration on public wifi is not safe. In the
+example here, I'm using a private Ethernet LAN (no internet gateway) with a
+dedicated Wifi AP that I use for testing.**
 
 This is how I set up a Debian box with the `mosquitto` MQTT broker for
 unencrypted and unauthenticated access on my wifi test network:
 
-Install packages:
+Install packages and configure the mosquitto server for manual start:
 ```
 $ sudo apt install mosquitto mosquitto-clients
+$ sudo systemctl stop mosquitto
+$ sudo systemctl disable mosquitto
 ```
 
-Check the IP address assigned to my wifi interface:
+Check the IP address assigned to my wifi interface with `hostname -I`. In this
+case, I have a IP 10.0.x.x address for the private test LAN and a 192.168.0.x
+for the main internet connected Wifi router:
 ```
-$ hostname -I | grep -o '192[^ ]*'
-192.168.0.100
+$ hostname -I
+10.0.0.10 192.168.0.100
 ```
 
-Reconfigure `mosquitto` MQTT broker to listen on wifi IP (DANGER!)
+Reconfigure `mosquitto` MQTT broker to listen only on the private LAN:
 ```
 $ cat <<EOF | sudo tee /etc/mosquitto/conf.d/LAN-listener.conf
 persistence false
 allow_anonymous true
-listener 1883 192.168.0.100
-listener 1883 127.0.0.1
+listener 1883 10.0.0.10
 EOF
-$ sudo systemctl restart mosquitto
-```
-
-Remove the risky unencrypted configuration after initial testing is done:
-```
-$ sudo rm /etc/mosquitto/conf.d/LAN-listener.conf
-$ sudo systemctl restart mosquitto
+$ sudo systemctl start mosquitto
 ```
 
 
@@ -348,10 +349,108 @@ $ mosquitto_pub -L mqtts://$USER:$KEY@io.adafruit.com:8883/$USER/f/test -m 1
 ```
 
 
-## Notes on TLS Config
+### Level UP to MQTT Over TLS
+
+To upgrade your local mosquitto MQTT broker to TLS, first you need to make
+sure you have the `openssl` command line tool installed. Try `openssl version`
+from a terminal. If that doesn't work, you can install openssl with:
+
+```
+sudo apt install openssl
+```
+
+Once you have openssl, you'll need to make a CA certificate and private key,
+then use those to sign a server key, then install those in the mosquitto
+configuration directory.
+
+1. Change to a temporary working directory
+   ```
+   mkdir ~/ca-cert
+   cd ~/ca-cert
+   ```
+
+2. Create a Certificate Authority (CA) private key and certificate file
+   ```
+   openssl req -newkey rsa:2048 -noenc -x509 -days 999 -extensions v3_ca \
+     -subj "/CN=My Self-Signed CA" -keyout ca.key -out ca.crt
+   ```
+
+3. Create a server private key and Certificate Signing Request (CSR)
+   ```
+   openssl req -newkey rsa:2048 -noenc \
+     -subj "/CN=$(hostname -I|awk '{print $1}')" \
+     -keyout server.key -out server.csr
+   ```
+
+4. Use your CA's certificate and private key to sign the CSR
+   ```
+   openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
+     -CAcreateserial -copy_extensions copy -days 365 -out server.crt
+   ```
+
+5. Check contents of the PEM files
+   ```
+   openssl x509 -in ca.crt -text -noout
+   openssl req -in server.csr -text -noout
+   openssl x509 -in server.crt -text -noout
+   ```
+
+6. Move the files into the /etc/mosquitto configuration directory and change
+   their permissions so that the certificates are publicly visible but the
+   private keys are only accessible to root and the mosquitto server
+   ```
+   cd ~/ca-certs
+   sudo mv ca.* server.* /etc/mosquitto/ca_certificates/
+   cd /etc/mosquitto/ca_certificates/
+   sudo chown root:root ca.* server.*
+   sudo chmod 644 ca.* server.*
+   sudo chown root:mosquitto server.key
+   sudo chmod 640 server.key
+   ```
+
+7. Modify mosquitto config to use TLS (the `$(hostname -I|awk '{print $1}')`
+   thing evaluates to the first IP address returned by `hostname -I`, in the
+   case of this example, that would be `10.0.0.10`)
+   ```
+   cat <<EOF | sudo tee /etc/mosquitto/conf.d/LAN-listener.conf
+   # To read the log, do: sudo tail -f /var/log/mosquitto/mosquitto.log
+   log_type all
+   per_listener_settings true
+
+   listener 1883 $(hostname -I|awk '{print $1}')
+   allow_anonymous true
+   persistence false
+
+   listener 8883 $(hostname -I|awk '{print $1}')
+   allow_anonymous true
+   persistence false
+   certfile /etc/mosquitto/ca_certificates/server.crt
+   keyfile /etc/mosquitto/ca_certificates/server.key
+   EOF
+   ```
+
+8. Restart mosquitto
+   ```
+   sudo systemctl restart mosquitto
+   ```
+
+If all that worked, you can use `mosquitto_sub` and `mosquito_pub` over TLS by
+changing to `-L mqtts://` (note the "s") and a `--cafile` option.
+
+For example to start a subscriber:
+```
+mosquitto_sub --cafile /etc/mosquitto/ca_certificates/ca.crt \
+  -L mqtts://10.0.3.17/test
+```
+
+And to publish:
+```
+mosquitto_pub --cafile /etc/mosquitto/ca_certificates/ca.crt \
+  -L mqtts://10.0.3.17/test -m 1
+```
 
 
-### Checking the Adafruit IO TLS Certificate
+## Notes on Adafruit IO TLS Config
 
 To check the Adafruit IO certificate chain with the `openssl` command line tool
 from a terminal shell on Debian 12:
