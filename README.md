@@ -288,7 +288,7 @@ $ sudo systemctl disable mosquitto
 
 Check the IP address assigned to my wifi interface with `hostname -I`. In this
 case, I have a IP 10.0.x.x address for the private test LAN and a 192.168.0.x
-for the main internet connected Wifi router:
+address for the main internet connected Wifi router:
 ```
 $ hostname -I
 10.0.0.10 192.168.0.100
@@ -349,7 +349,7 @@ $ mosquitto_pub -L mqtts://$USER:$KEY@io.adafruit.com:8883/$USER/f/test -m 1
 ```
 
 
-### Level UP to MQTT Over TLS
+### Level Up to MQTT Over TLS
 
 To upgrade your local mosquitto MQTT broker to TLS, first you need to make
 sure you have the `openssl` command line tool installed. Try `openssl version`
