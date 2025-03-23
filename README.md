@@ -258,19 +258,22 @@ To see the Kconfig options that enable those shell commands, check out
 
 
 
-## Local MQTT broker for testing
+## Testing with Mosquitto MQTT broker and clients
+
+Mosquitto is the name of an open source project that provides an MQTT broker
+and MQTT client programs to publish and subscribe from the command line.
 
 
 ### Easy unencrypted version
 
-For getting started with testing MQTT stuff, it can be helpful to run your own
+For developing an MQTT application on Zephyr, it can be helpful to run your own
 MQTT broker locally on a private network (Raspberry Pi, Debian box, or
 whatever).
 
-There are a lot of steps involved in setting up the Zephyr code for an MQTT
-client. Attempting to do all of that at once is challenging. You might find it
+Writing the Zephyr code for an MQTT client application involves many steps.
+Attempting to do all of that at once is challenging. You might find it
 easier to start with basic unencrypted (non-TLS) MQTT connections on a private
-network, then incrementally add encryption and authentication.
+network, then incrementally add encryption and authentication support.
 
 **CAUTION: Using this type of configuration on public wifi is not safe. In the
 example here, I'm using a private Ethernet LAN (no internet gateway) with a
@@ -305,7 +308,7 @@ $ sudo systemctl start mosquitto
 ```
 
 
-## Using `mosquitto_pub` and `mosquitto_sub` for testing
+### Using `mosquitto_pub` and `mosquitto_sub` for testing
 
 On Debian, if you install the `mosquitto-clents` package, you can publish and
 subscribe to MQTT topics from the command line. For example, assuming you were
