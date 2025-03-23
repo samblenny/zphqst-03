@@ -16,7 +16,7 @@ Features:
 - Boot button controls MQTT toggle switch once connected
 
 
-## Dev Tool Setup
+## Dev tool setup
 
 To prepare for building this project:
 
@@ -60,7 +60,7 @@ For other operating systems, you may need to adapt the instructions to suit
 your local setup.
 
 
-## Build & Run
+## Build & run
 
 To get started, you need to activate your Python venv that contains `west` and
 change into the `zphqst-03` directory within your Zephyr project directory.
@@ -87,7 +87,7 @@ make flash
 ```
 
 
-### Provision Network Credentials
+### Provision network credentials
 
 When you first install the app, in order to connect to the network, you must
 first provision the board with Wifi and MQTT login credentials. To do that,
@@ -200,7 +200,7 @@ Troubleshooting Checklist:
    web docs.
 
 
-## Erasing the NVM Flash Partition
+## Erasing the NVM flash partition
 
 The settings API uses the NVM backend with the `storage` partition that is
 defined as one of Espressif's default partitions in
@@ -258,10 +258,10 @@ To see the Kconfig options that enable those shell commands, check out
 
 
 
-## Local MQTT Broker for Testing
+## Local MQTT broker for testing
 
 
-### Easy Unencrypted Version
+### Easy unencrypted version
 
 For getting started with testing MQTT stuff, it can be helpful to run your own
 MQTT broker locally on a private network (Raspberry Pi, Debian box, or
@@ -349,7 +349,7 @@ $ mosquitto_pub -L mqtts://$USER:$KEY@io.adafruit.com:8883/$USER/f/test -m 1
 ```
 
 
-### Level Up to MQTT Over TLS
+### Level up to MQTT over TLS
 
 To upgrade your local mosquitto MQTT broker to TLS, first you need to make
 sure you have the `openssl` command line tool installed. Try `openssl version`
@@ -375,7 +375,10 @@ configuration directory.
      -subj "/CN=My Self-Signed CA" -keyout ca.key -out ca.crt
    ```
 
-3. Create a server private key and Certificate Signing Request (CSR)
+3. Create a server private key and Certificate Signing Request (CSR). The
+   stuff with `$(hostname -I|awk '{print $1}')` is a way to automatically
+   fill in the first hostname reported by `hostname -I`. You could just type
+   in `10.0.0.10` or whatever instead if you wanted.
    ```
    openssl req -newkey rsa:2048 -noenc \
      -subj "/CN=$(hostname -I|awk '{print $1}')" \
@@ -396,8 +399,9 @@ configuration directory.
    ```
 
 6. Move the files into the /etc/mosquitto configuration directory and change
-   their permissions so that the certificates are publicly visible but the
-   private keys are only accessible to root and the mosquitto server
+   their permissions. The point of this is to make the certificates publicly
+   visible so you can use them with `mosquitto_pub`, etc. while the private
+   keys can only be used root or the mosquitto server.
    ```
    cd ~/ca-certs
    sudo mv ca.* server.* /etc/mosquitto/ca_certificates/
@@ -435,7 +439,7 @@ configuration directory.
    ```
 
 If all that worked, you can use `mosquitto_sub` and `mosquito_pub` over TLS by
-changing to `-L mqtts://` (note the "s") and a `--cafile` option.
+changing to `-L mqtts://` (note the "s") and adding a `--cafile ...` option.
 
 For example to start a subscriber:
 ```
@@ -471,7 +475,7 @@ The output is long, but the main relevant points are:
 - Negotiated connection used `TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384`
 
 
-### Deciding Which Features to Enable
+### Deciding which mbed TLS features to enable
 
 To match the signature and stream ciphers used by the openssl check, mbed TLS
 would need to be configured to support:
