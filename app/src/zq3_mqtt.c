@@ -11,12 +11,22 @@
  * https://docs.zephyrproject.org/latest/connectivity/networking/api/sockets.html
  * https://github.com/zephyrproject-rtos/zephyr/blob/main/include/zephyr/net/socket.h
  *
+ * TLS Docs & Refs
+ * https://docs.zephyrproject.org/latest/connectivity/networking/api/mqtt.html
+ * https://docs.zephyrproject.org/latest/connectivity/networking/api/sockets.html
+ * https://docs.zephyrproject.org/latest/doxygen/html/group__tls__credentials.html
+ * zephyr/include/zephyr/net/mqtt.h  (struct mqtt_sec_config)
+ * zephyr/include/zephyr/net/tls_credentials.h
+ * zephyr/samples/net/secure_mqtt_sensor_actuator/src/mqtt_client.c
+ * zephyr/samples/net/secure_mqtt_sensor_actuator/src/tls_config/cert.h
+ *
  * Adafruit IO MQTT Settings:
  * host:port: io.adafruit.com:8883
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/net/mqtt.h>
+#include <zephyr/net/tls_credentials.h>
 #include "zq3.h"
 #include "zq3_dns.h"
 #include "zq3_mqtt.h"
@@ -52,14 +62,23 @@ int zq3_mqtt_init(
 	c->rx_buf_size = sizeof(mctx->rx_buf);
 	c->tx_buf = mctx->tx_buf;
 	c->tx_buf_size = sizeof(mctx->tx_buf);
-	// Start by assuming TLS is turned off
-	c->transport.type = MQTT_TRANSPORT_NON_SECURE;
-	mctx->tls = false;
+	// Start by assuming TLS is turned on
+	c->transport.type = MQTT_TRANSPORT_SECURE;
+	mctx->tls = true;
+	// Configure TLS stuff
+	struct mqtt_sec_config *conf = &mctx->client.transport.tls.config;
+	// TODO: fix this (use TLS_PEER_VERIFY_REQUIRED)
+	conf->peer_verify = TLS_PEER_VERIFY_NONE;
+	conf->cipher_list = NULL;
+	// TODO: fix this (register CA cert and add sec_tag_t array)
+	conf->sec_tag_list = NULL;
+	conf->sec_tag_count = 0;
+	// TODO: fix this (verify hostname)
+	conf->hostname = NULL;
 	return 0;
 }
 
 // Update context for TLS enabled (port 8883) or disabled (port 1883)
-// TODO: finish implementing this
 int zq3_mqtt_set_tls(zq3_mqtt_context *mctx, bool enabled) {
 	if (enabled) {
 		mctx->client.transport.type = MQTT_TRANSPORT_SECURE;
@@ -68,9 +87,6 @@ int zq3_mqtt_set_tls(zq3_mqtt_context *mctx, bool enabled) {
 		mctx->client.transport.type = MQTT_TRANSPORT_NON_SECURE;
 		mctx->tls = false;
 	}
-	// struct mqtt_sec_config *conf = &Ctx.transport.tls.config;
-	// conf->cipher_list = NULL;
-	// conf->hostname = MQTT_BROKER_HOSTNAME;
 	return 0;
 }
 
@@ -210,10 +226,24 @@ int zq3_mqtt_connect(zq3_mqtt_context *mctx) {
 	err = mqtt_connect(&mctx->client);
 	if(err) {
 		// https://docs.zephyrproject.org/apidoc/latest/errno_8h.html
-		printk("ERR: mqtt_connect() = %d\n", err);
+		const char *fmt = "ERR: mqtt_connect() = %d %s\n";
+		switch(-err) {
+		case ENOENT:
+			printk(fmt, err, "ENOENT: TLS CA cert valid?");
+			break;
+		case ECONNREFUSED:
+			printk(fmt, err, "ECONNREFUSED: Broker service running?");
+			break;
+		default:
+			printk(fmt, err, "");
+		}
 		return err;
 	}
-	mctx->fds[0].fd = mctx->client.transport.tcp.sock;
+	if (mctx->tls) {
+		mctx->fds[0].fd = mctx->client.transport.tls.sock;
+	} else {
+		mctx->fds[0].fd = mctx->client.transport.tcp.sock;
+	}
 	mctx->fds[0].events = ZSOCK_POLLIN;
 	return 0;
 }
