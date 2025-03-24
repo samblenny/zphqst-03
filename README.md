@@ -374,9 +374,13 @@ configuration directory.
 
 2. Create a Certificate Authority (CA) private key and certificate file
    ```
-   openssl req -newkey rsa:2048 -noenc -x509 -days 999 -extensions v3_ca \
-     -subj "/CN=My Self-Signed CA" -keyout ca.key -out ca.crt
+   openssl req -newkey rsa:2048 -noenc -x509 -days 730 -extensions v3_ca \
+     -subj "/C=US/O=MyCA/CN=My Self-Signed CA" -keyout ca.key -out ca.crt
    ```
+   CAUTION: The mbed TLS certificate parser appears to care about the contents
+   of the subject fields and perhaps the validity period. If your connection
+   closes mysteriously and you see a `-0x2180` error code from the mbed TLS
+   debug logging, it may be unhappy with the subject or days.
 
 3. Create a server private key and Certificate Signing Request (CSR). The
    stuff with `$(hostname -I|awk '{print $1}')` is a way to automatically
