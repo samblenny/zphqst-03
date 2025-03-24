@@ -407,12 +407,27 @@ configuration directory.
    keys can only be used root or the mosquitto server.
    ```
    cd ~/ca-certs
+   chmod 600 ca.* server.*
    sudo mv ca.* server.* /etc/mosquitto/ca_certificates/
    cd /etc/mosquitto/ca_certificates/
    sudo chown root:root ca.* server.*
-   sudo chmod 644 ca.* server.*
+   sudo chmod 600 ca.* server.*
+   sudo chmod 644 *.crt
    sudo chown root:mosquitto server.key
    sudo chmod 640 server.key
+   ```
+
+   The end result should have permissions that look like this:
+   ```
+   $ ls -l /etc/mosquitto/ca_certificates/
+   total 28
+   -rw-r--r-- 1 root root      1135 Mar 22 12:00 ca.crt
+   -rw------- 1 root root      1704 Mar 22 12:00 ca.key
+   -rw------- 1 root root        41 Mar 22 12:00 ca.srl
+   -rw-r--r-- 1 root root        73 Sep 30  2023 README
+   -rw-r--r-- 1 root root      1131 Mar 22 12:00 server.crt
+   -rw------- 1 root root       944 Mar 22 12:00 server.csr
+   -rw-r----- 1 root mosquitto 1704 Mar 22 12:00 server.key
    ```
 
 7. Modify mosquitto config to use TLS (the `$(hostname -I|awk '{print $1}')`
