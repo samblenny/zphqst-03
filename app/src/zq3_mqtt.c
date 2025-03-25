@@ -30,6 +30,7 @@
 #include "zq3.h"
 #include "zq3_dns.h"
 #include "zq3_mqtt.h"
+#include "zq3_cert.h"
 
 
 // Initialize MQTT
@@ -65,16 +66,26 @@ int zq3_mqtt_init(
 	// Start by assuming TLS is turned on
 	c->transport.type = MQTT_TRANSPORT_SECURE;
 	mctx->tls = true;
-	// Configure TLS stuff
+    // Register the TLS CA certificates from zq3_certs.h
+	int err;
+	const char fmt[] = "ERR: tls_credential_add(%d, ...) = %d\n";
+	err = tls_credential_add(zq3_cert_tags[0], TLS_CREDENTIAL_CA_CERTIFICATE,
+		zq3_cert_self_signed, sizeof(zq3_cert_self_signed));
+	if (err) {
+		printk(fmt, zq3_cert_tags[0], err);
+	}
+	err = tls_credential_add(zq3_cert_tags[1], TLS_CREDENTIAL_CA_CERTIFICATE,
+		zq3_cert_geotrust_g1, sizeof(zq3_cert_geotrust_g1));
+	if (err) {
+		printk(fmt, zq3_cert_tags[1], err);
+	}
+	// Configure TLS stuff in the MQTT client struct
 	struct mqtt_sec_config *conf = &mctx->client.transport.tls.config;
-	// TODO: fix this (use TLS_PEER_VERIFY_REQUIRED)
-	conf->peer_verify = TLS_PEER_VERIFY_NONE;
+	conf->peer_verify = TLS_PEER_VERIFY_REQUIRED;
 	conf->cipher_list = NULL;
-	// TODO: fix this (register CA cert and add sec_tag_t array)
-	conf->sec_tag_list = NULL;
-	conf->sec_tag_count = 0;
-	// TODO: fix this (verify hostname)
-	conf->hostname = NULL;
+	conf->sec_tag_list = zq3_cert_tags;
+	conf->sec_tag_count = sizeof(zq3_cert_tags)/sizeof(zq3_cert_tags[0]);
+	conf->hostname = mctx->hostname;
 	return 0;
 }
 
