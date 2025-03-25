@@ -3,14 +3,13 @@
 
 # zphqst-03
 
-**WORK IN PROGRESS**
-
 This is a simple IoT toggle switch demo application for Zephyr on the
-Adafruit Feather TFT ESP32-S3 board.
+Adafruit Feather TFT ESP32-S3 board. It works with Adafruit IO.
 
 Features:
 - LVGL graphics for network status and toggle switch widget
 - MQTT networking over Wifi
+- TLSv1.2 with "DigiCert Global Root G2" CA cert for Adafruit IO
 - Provisioning over USB serial (credentials saved to NVM flash)
 - Boot button starts network connection
 - Boot button controls MQTT toggle switch once connected
@@ -140,6 +139,16 @@ anonymous connections enabled (username and password can be blank):
 uart:~$ settings write string zq3/ssid MySSID
 uart:~$ settings write string zq3/psk "my wifi passphrase"
 uart:~$ settings write string zq3/url mqtt://:@192.168.0.100/test
+```
+
+This second example is for an authenticated TLSv1.2 connection to Adafruit IO.
+Note how there's an "s" in `mqtts://`, the username is 'User', the API key is
+`key`, and the topic is `User/f/test`:
+
+```
+uart:~$ settings write string zq3/ssid MySSID
+uart:~$ settings write string zq3/psk "my wifi passphrase"
+uart:~$ settings write string zq3/url mqtts://User:Key@io.adafruit.com/User/f/test
 ```
 
 If you try writing the settings and get an error, check the section below
