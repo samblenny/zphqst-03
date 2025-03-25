@@ -22,8 +22,7 @@
  * setting up TLS for the MQTT connection. The tag numbers need to be unique,
  * and there should be one tag for each CA cert.
  */
-//static const sec_tag_t zq3_cert_tags[] = {1, 2, 3};
-static const sec_tag_t zq3_cert_tags[] = {2, 3};
+static const sec_tag_t zq3_cert_tags[] = {1, 2, 3};
 
 /*
  * This is the certificate for my self-signed CA, so it's useless to anybody
