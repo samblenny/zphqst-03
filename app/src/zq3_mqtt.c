@@ -69,11 +69,32 @@ int zq3_mqtt_init(
     // Register the TLS CA certificates from zq3_certs.h
 	int err;
 	const char fmt[] = "ERR: tls_credential_add(%d, ...) = %d\n";
+/*
+	// This one is for the broker on my private testbench LAN. You can omit
+	// it or replace it with your own self-signed testing cert in zq3_cert.h
 	err = tls_credential_add(zq3_cert_tags[0], TLS_CREDENTIAL_CA_CERTIFICATE,
 		zq3_cert_self_signed, sizeof(zq3_cert_self_signed));
 	if (err) {
 		printk(fmt, zq3_cert_tags[0], err);
 	}
+*/
+	// This is the root certificate used by the certificate chain for
+	// io.adafruit.com. You need this to talk to Adafruit IO.
+// ====================
+// set index back to 1
+// ====================
+	err = tls_credential_add(zq3_cert_tags[0], TLS_CREDENTIAL_CA_CERTIFICATE,
+		zq3_cert_digicert_global_root_g2,
+		sizeof(zq3_cert_digicert_global_root_g2));
+	if (err) {
+		printk(fmt, zq3_cert_tags[0], err);
+	}
+
+	// This is the intermediate certificate for io.adafruit.com. You need this
+	// to talk to Adafruit IO
+// ====================
+// set index back to 2
+// ====================
 	err = tls_credential_add(zq3_cert_tags[1], TLS_CREDENTIAL_CA_CERTIFICATE,
 		zq3_cert_geotrust_g1, sizeof(zq3_cert_geotrust_g1));
 	if (err) {

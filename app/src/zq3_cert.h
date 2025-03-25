@@ -6,6 +6,9 @@
  * zephyr/samples/net/secure_mqtt_sensor_actuator/src/mqtt_client.c
  * zephyr/samples/net/secure_mqtt_sensor_actuator/src/tls_config/cert.h
  * zephyr/include/zephyr/net/tls_credentials.h
+ *
+ * DigiCert Root Authority Certificates download page
+ * https://www.digicert.com/kb/digicert-root-certificates.htm
  */
 
 #ifndef ZQ3_CERT_H
@@ -19,7 +22,8 @@
  * setting up TLS for the MQTT connection. The tag numbers need to be unique,
  * and there should be one tag for each CA cert.
  */
-static const sec_tag_t zq3_cert_tags[] = {1, 2};
+//static const sec_tag_t zq3_cert_tags[] = {1, 2, 3};
+static const sec_tag_t zq3_cert_tags[] = {2, 3};
 
 /*
  * This is the certificate for my self-signed CA, so it's useless to anybody
@@ -50,6 +54,41 @@ static const char zq3_cert_self_signed[] =
 	"9qKd5xliqLbv6XJXI1SLc5Ftp9flmKjIwUL7A5sG6Q2lHAoS+t9ha99yEb87s/qr\r\n"
 	"Xmu9aU6/B6PFf3M5XAbV5AlGsjD3Y6grn3DKJwKoMDvzCBE7XCYO2g/nHGLqYnwX\r\n"
 	"sSnqXwvCR2cWE4z+dTSa9KeAhgt3qws9VnrmnK2c13qNKl9eQQ==\r\n"
+	"-----END CERTIFICATE-----\r\n";
+
+/*
+ * This is the "DigiCert Global Root G2" certificate, which signs the
+ * intermediate certificate, which signs the Adafruit IO server certificate
+ * (as of March 2025). This is good until Jan 15, 2038. The public key is
+ * 2048-bit RSA. I downloaded this from:
+ *    https://www.digicert.com/kb/digicert-root-certificates.htm
+ *
+ * CAUTION: For mbed TLS to verify the server's certificate, it doesn't work
+ * to just give an intermediate certificate here. You also need to give the
+ * first certificate in the chain (root cert).
+ */
+static const char zq3_cert_digicert_global_root_g2[] =
+	"-----BEGIN CERTIFICATE-----\r\n"
+	"MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh\r\n"
+	"MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3\r\n"
+	"d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH\r\n"
+	"MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT\r\n"
+	"MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j\r\n"
+	"b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG\r\n"
+	"9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI\r\n"
+	"2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx\r\n"
+	"1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ\r\n"
+	"q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz\r\n"
+	"tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ\r\n"
+	"vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP\r\n"
+	"BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV\r\n"
+	"5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY\r\n"
+	"1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4\r\n"
+	"NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG\r\n"
+	"Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91\r\n"
+	"8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe\r\n"
+	"pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl\r\n"
+	"MrY=\r\n"
 	"-----END CERTIFICATE-----\r\n";
 
 /*
