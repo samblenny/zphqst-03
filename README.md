@@ -3,6 +3,8 @@
 
 # zphqst-03
 
+![zphqst-03-demo.jpeg](zphqst-03-demo.jpeg)
+
 This is a simple IoT toggle switch demo application for Zephyr on the
 Adafruit Feather TFT ESP32-S3 board. It works with Adafruit IO.
 
